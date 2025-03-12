@@ -1,4 +1,6 @@
 import warnings
+
+ 
 warnings.filterwarnings("ignore")
 
 import os
@@ -20,6 +22,10 @@ import numpy as np
 import gymnasium as gym
 import franka_genesis
 
+import multiprocessing as mp
+# import cv2
+from utils import visualize_policy
+
 config = {
     'conv': [
         # in_channel, out_channel, kernel_size, stride
@@ -39,10 +45,10 @@ def parse_args():
     
     # environment
     parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--mode', default='img_prop', type=str, 
+    parser.add_argument('--mode', default='prop', type=str, 
                         help="Modes in ['img', 'img_prop', 'prop']")
 
-    parser.add_argument('--task_name', default='franka_gdino_rw', type=str)
+    parser.add_argument('--task_name', default='reacher_non_visual_dense', type=str)
     parser.add_argument('--image_height', default=90, type=int)          # Mode: img, img_prop
     parser.add_argument('--image_width', default=160, type=int)          # Mode: img, img_prop     
     parser.add_argument('--image_history', default=3, type=int)          # Mode: img, img_prop
@@ -92,7 +98,7 @@ def parse_args():
     parser.add_argument('--save_wandb', default=False, action='store_true')
 
     parser.add_argument('--save_model', default=True, action='store_true')
-    parser.add_argument('--save_model_freq', default=500_000, type=int)
+    parser.add_argument('--save_model_freq', default=50_000, type=int)
     parser.add_argument('--load_model', default=-1, type=int)
     parser.add_argument('--start_step', default=0, type=int)
     parser.add_argument('--start_episode', default=0, type=int)
@@ -106,8 +112,11 @@ def parse_args():
 
 
 if __name__ == "__main__":
+
+    mp.set_start_method('spawn')
+
     args = parse_args()
-    env = gym.make('FrankaReacherDense-v0', max_episode_length=1000)
+    env = gym.make('FrankaReacherDense-v0', max_episode_length=200, render_mode="")
     env = WrappedEnv(env, episode_max_steps=args.episode_steps)
     args.name = f'{args.task_name}'
     args.work_dir += f'/results/{args.name}/seed_{args.seed}/'
@@ -141,8 +150,11 @@ if __name__ == "__main__":
         args.buffer_load_path = os.path.join(args.work_dir, 'buffers')
 
     args.model_dir = os.path.join(args.work_dir, 'checkpoints') 
+    
     if args.save_model:
         make_dir(args.model_dir)
+        make_dir(args.work_dir + '/videos')
+    
 
     proprioception_shape = env.observation_space.shape
     action_shape = env.action_space.shape
@@ -159,10 +171,10 @@ if __name__ == "__main__":
     args.image_shape = (0, 0, 0)
     args.net_params = config
     agent = SACRADAgent(vars(args))
-    obs = env.reset()
+    obs, _ = env.reset()
     first_step = True
     task_start_time = time.time()
-
+    print("Starting training...")
     while env.total_steps < args.env_steps:
         t1 = time.time()
         action = agent.sample_actions(obs)
@@ -181,7 +193,7 @@ if __name__ == "__main__":
         
         if done:
             
-            obs = env.reset()
+            obs, _ = env.reset()
             info['tag'] = 'train'
             info['elapsed_time'] = time.time() - task_start_time
             info['dump'] = True
@@ -210,6 +222,9 @@ if __name__ == "__main__":
         if args.save_model and env.total_steps % args.save_model_freq == 0 and \
             env.total_steps < args.env_steps:
             agent.checkpoint(env.total_steps)
+
+            ## visualize checkpoint
+            visualize_policy(agent, env, args.work_dir)
     if args.save_model:
         agent.checkpoint(env.total_steps)
     L.plot()
