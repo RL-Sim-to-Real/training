@@ -1,30 +1,22 @@
-import warnings
-
- 
-warnings.filterwarnings("ignore")
-
-import os
-os.environ['XLA_PYTHON_CLIENT_PREALLOCATE']='false'
-# os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION']='.10'
-# os.environ["TF_CUDNN_DETERMINISTIC"] = "1"
+from franka_real.FrankaReacherEnv import FrankaReacherEnv
+import time
+import numpy as np 
+from multiprocessing import shared_memory, Process, Queue, Lock
 
 from jsac.helpers.utils import MODE, make_dir, set_seed_everywhere, WrappedEnv
 from jsac.helpers.logger import Logger
 from jsac.algo.agent import SACRADAgent, AsyncSACRADAgent
 
+import cv2
+
+
+np.set_printoptions(precision=3, linewidth=10000, suppress=True)
+import os
+import json
 import time
-
+import tkinter as tk
+from tkinter import ttk
 import argparse
-import shutil
-import numpy as np
-
-
-import gymnasium as gym
-import franka_genesis
-
-import multiprocessing as mp
-# import cv2
-from utils import visualize_policy
 
 config = {
     'conv': [
@@ -39,6 +31,7 @@ config = {
 
     'mlp': [1024, 1024],
 }
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -111,30 +104,18 @@ def parse_args():
     return args
 
 
-if __name__ == "__main__":
 
-    mp.set_start_method('spawn')
-
-    args = parse_args()
-    env = gym.make('FrankaReacherDense-v0', max_episode_length=200, render_mode="")
-    env = WrappedEnv(env, episode_max_steps=args.episode_steps)
-    args.name = f'{args.task_name}'
-    args.work_dir += f'/results/{args.name}/seed_{args.seed}/'
+def run_policy(args):
+    env = FrankaReacherEnv(dt=0.04)
+    env = WrappedEnv(env, start_step= args.start_step, 
+                     start_episode=args.start_episode, episode_max_steps=200)
     
-    if os.path.exists(args.work_dir):
-        inp = input('The work directory already exists. ' +
-                    'Please select one of the following: \n' +  
-                    '  1) Press Enter to resume the run.\n' + 
-                    '  2) Press X to remove the previous work' + 
-                    ' directory and start a new run.\n' + 
-                    '  3) Press any other key to exit.\n')
-        if inp == 'X' or inp == 'x':
-            shutil.rmtree(args.work_dir)
-            print('Previous work dir removed.')
-        elif inp == '':
-            pass
-        else:
-            exit(0)
+    args.work_dir += f'/results/{args.task_name}/seed_{args.seed}/'
+
+    if os.path.exists(os.path.abspath(args.work_dir)):
+        print("loading model from work directory")
+    else:
+        exit(0)
 
     make_dir(args.work_dir)
 
@@ -150,11 +131,8 @@ if __name__ == "__main__":
         args.buffer_load_path = os.path.join(args.work_dir, 'buffers')
 
     args.model_dir = os.path.join(args.work_dir, 'checkpoints') 
-    
     if args.save_model:
         make_dir(args.model_dir)
-        make_dir(args.work_dir + '/videos')
-    
 
     proprioception_shape = env.observation_space.shape
     action_shape = env.action_space.shape
@@ -167,75 +145,42 @@ if __name__ == "__main__":
     args.proprioception_shape = env.observation_space.shape
     args.action_shape = env.action_space.shape
     args.env_action_space = env.action_space
-
-    args.image_shape = (0, 0, 0)
+    args.image_shape = None
     args.net_params = config
     agent = SACRADAgent(vars(args))
     obs, _ = env.reset()
-    first_step = True
-    task_start_time = time.time()
-    print("Starting training...")
-    while env.total_steps < args.env_steps:
-        t1 = time.time()
-        action = agent.sample_actions(obs)
-        t2 = time.time()
+    # returns = []
+    print("Env reset")
+    print(obs)
+
+
+    done = False
+    rewards = []
+    while not done:
+        action = agent.sample_actions(obs, deterministic=True)
+        action = action * 0.5
         next_obs, reward, done, info = env.step(action)
-        # truncate = env.total_steps % max_episode_length == 0
-        # done = done or truncate
-        t3 = time.time()
-        # if not done:
-        #     mask = 1.0
-        # else:
-        #     mask = 0.0
-        mask = 1.0 # always 1 due to continuing task
-        agent.add(obs, action, reward, next_obs, mask, first_step)
+        print(f"Action: {action}, Reward: {reward}, Done: {done}, Info: {info}")
         obs = next_obs
-        first_step = False
-        
         if done:
+            obs,_ = env.reset()
+            done = False
+            time.sleep(2)
+            print("Episode Done")
+        
+    # np.savetxt("results/real_episodic_returns.txt", returns)
+    # cv2.destroyAllWindows()
+    env.close()
+    print("Policy run complete")
+    
             
-            obs, _ = env.reset()
-            info['tag'] = 'train'
-            info['elapsed_time'] = time.time() - task_start_time
-            info['dump'] = True
-            L.push(info)
-            first_step = True
-        if env.total_steps > args.init_steps and env.total_steps % args.update_every == 0:
-
-            update_infos = agent.update()
-            
-            if update_infos is not None:
 
 
-                for update_info in update_infos:
-                    update_info['action_sample_time'] = (t2 - t1) * 1000
-                    update_info['env_time'] = (t3 - t2) * 1000
-                    update_info['step'] = env.total_steps
-                    update_info['tag'] = 'train'
-                    update_info['dump'] = False
 
-                    L.push(update_info)
-                    # exit(0)
+if __name__ == "__main__":
+    args = parse_args()
 
-        if env.total_steps % args.xtick == 0:
-            L.plot()
-
-        if args.save_model and env.total_steps % args.save_model_freq == 0 and \
-            env.total_steps < args.env_steps:
-            agent.checkpoint(env.total_steps)
-
-            ## visualize checkpoint
-            visualize_policy(agent, env, args.work_dir)
-    if args.save_model:
-        agent.checkpoint(env.total_steps)
-
-        ## visualize checkpoint
-        visualize_policy(agent, env, args.work_dir)
-    L.plot()
-    L.close()
-
-    agent.close()
-
-    end_time = time.time()
-    print(f'\nFinished in {end_time - task_start_time}s')
-
+    print("Running Policy")
+    run_policy(args)
+    # env = FrankaReacherEnv()
+    # env.reset()
