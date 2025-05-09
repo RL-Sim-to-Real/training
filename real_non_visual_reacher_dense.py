@@ -18,6 +18,8 @@ import tkinter as tk
 from tkinter import ttk
 import argparse
 
+import signal
+
 config = {
     'conv': [
         # in_channel, out_channel, kernel_size, stride
@@ -103,7 +105,10 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-
+def handle_cntrl_c(signal, frame, env):
+    env.reset()
+    env.close()
+    exit(0)
 
 def run_policy(args):
     env = FrankaReacherEnv(dt=0.04)
@@ -156,21 +161,30 @@ def run_policy(args):
 
     done = False
     rewards = []
+    signal.signal(signal.SIGINT, lambda signal, frame: handle_cntrl_c(signal, frame, env))
     while not done:
         action = agent.sample_actions(obs, deterministic=True)
-        action = action * 0.5
+        action = action * 0.5  # action scaling done for safety
         next_obs, reward, done, info = env.step(action)
         print(f"Action: {action}, Reward: {reward}, Done: {done}, Info: {info}")
+
         obs = next_obs
+        ee_pos = obs[14:17]
+        target = obs[17:]
+        distance = np.linalg.norm(ee_pos - target)
+
+        print(f"Distance: {distance}")
+        print(f"EE Pos: {ee_pos}, Target: {target}")
+
+        
         if done:
-            obs,_ = env.reset()
+            obs, _ = env.reset()
             done = False
             time.sleep(2)
             print("Episode Done")
-        
-    # np.savetxt("results/real_episodic_returns.txt", returns)
-    # cv2.destroyAllWindows()
+
     env.close()
+    exit(0)
     print("Policy run complete")
     
             
