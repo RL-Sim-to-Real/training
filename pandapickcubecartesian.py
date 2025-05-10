@@ -20,9 +20,8 @@ from mujoco_playground.config import manipulation_params
 
 import jax.numpy as jnp
 from jax.tree_util import tree_map
-
-
-
+import mujoco
+import mujoco.viewer
 
 env_name = "PandaPickCubeCartesian"
 env_cfg = manipulation.get_default_config(env_name)
@@ -41,45 +40,13 @@ config_overrides = {
 }
 
 env = manipulation.load(env_name, config=env_cfg, 
-                        config_overrides=config_overrides
-)
-randomization_fn = functools.partial(randomize.domain_randomize,
-                                        num_worlds=num_envs
-)
-env = wrapper.wrap_for_brax_training(
-    env,
-    vision=True,
-    num_vision_envs=num_envs,
-    episode_length=episode_length,
-    action_repeat=1,
-    randomization_fn=randomization_fn
-)
+                        config_overrides=config_overrides)
 
 
-
-# jit_reset = jax.jit(env.reset)
-# jit_step = jax.jit(env.step)
-
-def tile(img, d):
-    assert img.shape[0] == d*d
-    img = img.reshape((d,d)+img.shape[1:])
-    return np.concatenate(np.concatenate(img, axis=1), axis=1)
-
-def unvmap(x):
-    return jax.tree.map(lambda y: y[0], x)
-
-
-
-
-rng = jax.random.PRNGKey(0)
-state = jit_reset(jax.random.split(rng, num_envs))
-rollout = [unvmap(state)]
-
-f = 0.2
-for i in range(env_cfg.episode_length):
-
-  state = jit_reset(jax.random.split(rng, num_envs))
-  rollout.append(unvmap(state))
-
-frames = env.render(rollout)
-media.show_video(frames, fps=1.0 / env.dt)
+mj_model = env.mj_model
+data = mujoco.MjData(mj_model)
+# Set up a live view render
+with mujoco.viewer.launch_passive(mj_model, data) as viewer:
+    while viewer.is_running():
+        mujoco.mj_step(mj_model, data)
+        viewer.sync()
