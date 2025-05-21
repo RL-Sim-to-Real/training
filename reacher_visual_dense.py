@@ -50,7 +50,7 @@ def parse_args():
 
     parser.add_argument('--task_name', default='reacher_visual_dense', type=str)
     parser.add_argument('--image_height', default=64, type=int)          # Mode: img, img_prop
-    parser.add_argument('--image_width', default=64, type=int)          # Mode: img, img_prop     
+    parser.add_argument('--image_width', default=128, type=int)          # Mode: img, img_prop     
     parser.add_argument('--image_history', default=0, type=int)          # Mode: img, img_prop
     parser.add_argument('--dt', default=0.15, type=float)
     parser.add_argument('--episode_steps', default=100, type=int) 
@@ -64,6 +64,8 @@ def parse_args():
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--sync_mode', default=False, action='store_true')
     parser.add_argument('--global_norm', default=1.0, type=float)
+    parser.add_argument('--layer_norm', default=False, action='store_true')
+    parser.add_argument('--apply_weight_clip', default=False, action='store_true')
     
     # critic
     parser.add_argument('--critic_lr', default=1e-4, type=float) 
@@ -163,14 +165,16 @@ if __name__ == "__main__":
     print(f"{proprioception_shape}, {action_shape}, {env_action_space}")
     set_seed_everywhere(seed=args.seed)
     
-    args.single_image_shape = (args.image_width, args.image_height, 3)
+    args.single_image_shape = (args.image_height, args.image_width , 3)
     args.proprioception_shape = env.observation_space.shape
     args.action_shape = env.action_space.shape
     args.env_action_space = env.action_space
-    args.image_shape = (64, 64, 3)
+    args.image_shape = (64, 128, 3)
     args.net_params = config
     agent = SACRADAgent(vars(args))
     state, _ = env.reset()
+    img, _ = state
+    print(f"Image shape: {img.shape}")
     print("Env reset")
     first_step = True
     task_start_time = time.time()

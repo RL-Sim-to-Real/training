@@ -3,13 +3,16 @@ import os
 
 def visualize_policy(agent, env, output_dir):
     images = []
-    obs, _ = env.reset()
+    state, _ = env.reset()
     for _ in range(200):
-        img = env.render()
+        action = agent.sample_actions(state)
+        next_state, reward, done, info = env.step(action)
+        if isinstance(next_state, tuple) and len(next_state) == 2:
+            img, _ = next_state
+        else:
+            img = env.sim.cam.render(rgb=True)[0]
         images.append(img)
-        action = agent.sample_actions(obs)
-        next_obs, reward, done, info = env.step(action)
-        obs = next_obs
+        state = next_state
         if done:
             break
 

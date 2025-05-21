@@ -21,7 +21,7 @@ import numpy as np
 
 import gymnasium as gym
 import franka_genesis
-from franka_genesis.FrankaReacher.FrankaReacherEnv import FrankaReacherEnv
+from franka_genesis.FrankaTracker.FrankaTrackerEnv import FrankaTrackerEnv
 import multiprocessing as mp
 # import cv2
 from utils import visualize_policy
@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument('--mode', default='prop', type=str, 
                         help="Modes in ['img', 'img_prop', 'prop']")
 
-    parser.add_argument('--task_name', default='reacher_non_visual_dense', type=str)
+    parser.add_argument('--task_name', default='tracker_non_visual_dense', type=str)
     parser.add_argument('--image_height', default=90, type=int)          # Mode: img, img_prop
     parser.add_argument('--image_width', default=160, type=int)          # Mode: img, img_prop     
     parser.add_argument('--image_history', default=3, type=int)          # Mode: img, img_prop
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     mp.set_start_method('spawn')
 
     args = parse_args()
-    env = FrankaReacherEnv(render_mode="", 
+    env = FrankaTrackerEnv(render_mode="", 
                            action_mode=args.action_mode,
                            max_episode_length=500)
     env = WrappedEnv(env, episode_max_steps=args.episode_steps)
