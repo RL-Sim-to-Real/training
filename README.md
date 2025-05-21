@@ -10,3 +10,10 @@ FrankaReach training
 ```
 python reacher_non_visual_dense.py --replay_buffer_capacity=1_00_000 --env_steps=1_00_000 --seed=0 --mode=prop --action_mode="velocity"
 ```
+
+FrankaTrack training
+
+
+```
+python tracker_non_visual_dense.py --replay_buffer_capacity=1_00_000 --env_steps=1_00_000 --seed=0 --mode=prop --action_mode="velocity"
+```
