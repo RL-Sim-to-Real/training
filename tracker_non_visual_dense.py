@@ -7,7 +7,7 @@ import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE']='false'
 # os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION']='.10'
 # os.environ["TF_CUDNN_DETERMINISTIC"] = "1"
-
+# os.environ["JAX_ENABLE_X64"] = "True"
 from jsac.helpers.utils import MODE, make_dir, set_seed_everywhere, WrappedEnv
 from jsac.helpers.logger import Logger
 from jsac.algo.agent import SACRADAgent, AsyncSACRADAgent
@@ -26,6 +26,7 @@ import multiprocessing as mp
 # import cv2
 from utils import visualize_policy
 
+## NOTE: Layer norm is required when using torque!!
 config = {
     'conv': [
         # in_channel, out_channel, kernel_size, stride
@@ -187,6 +188,7 @@ if __name__ == "__main__":
         action = agent.sample_actions(obs)
         t2 = time.time()
         next_obs, reward, done, info = env.step(action)
+        # print(reward)
         # truncate = env.total_steps % max_episode_length == 0
         # done = done or truncate
         t3 = time.time()
