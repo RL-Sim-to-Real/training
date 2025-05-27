@@ -9,6 +9,8 @@ def visualize_policy(agent, env, output_dir):
         next_state, reward, done, info = env.step(action)
         if isinstance(next_state, tuple) and len(next_state) == 2:
             img, _ = next_state
+            # img1, img2 = img[:, :, :3], img[:, :, 3:]
+            # img = cv2.hconcat([img1, img2])
         else:
             img = env.sim.cam.render(rgb=True)[0]
         images.append(img)

@@ -29,13 +29,13 @@ from utils import visualize_policy
 config = {
     'conv': [
         # in_channel, out_channel, kernel_size, stride
-        [-1, 32, 3, 2],
-        [32, 32, 3, 2],
-        [32, 32, 3, 2],
-        [32, 32, 3, 1],
+        [-1, 32, 5, 2],
+        [32, 32, 5, 2],
+        [32, 64, 3, 1],
+        [64, 64, 3, 1],
     ],
     
-    'latent_dim': 50,
+    'latent_dim': 64,
 
     'mlp': [1024, 1024],
 }
@@ -50,8 +50,8 @@ def parse_args():
 
     parser.add_argument('--task_name', default='reacher_visual_dense', type=str)
     parser.add_argument('--image_height', default=64, type=int)          # Mode: img, img_prop
-    parser.add_argument('--image_width', default=128, type=int)          # Mode: img, img_prop     
-    parser.add_argument('--image_history', default=0, type=int)          # Mode: img, img_prop
+    parser.add_argument('--image_width', default=64, type=int)          # Mode: img, img_prop     
+    parser.add_argument('--image_history', default=3, type=int)          # Mode: img, img_prop
     parser.add_argument('--dt', default=0.15, type=float)
     parser.add_argument('--episode_steps', default=100, type=int) 
 
@@ -75,7 +75,7 @@ def parse_args():
     parser.add_argument('--critic_target_update_freq', default=1, type=int)
     
     # actor
-    parser.add_argument('--actor_lr', default=1e-4, type=float)
+    parser.add_argument('--actor_lr', default=3e-4, type=float)
     parser.add_argument('--actor_update_freq', default=1, type=int)
     parser.add_argument('--actor_sync_freq', default=8, type=int)   # Sync mode: False
     
@@ -96,11 +96,11 @@ def parse_args():
     parser.add_argument('--work_dir', default='.', type=str)
     parser.add_argument('--save_tensorboard', default=False, 
                         action='store_true')
-    parser.add_argument('--xtick', default=10_000, type=int)
+    parser.add_argument('--xtick', default=5_000, type=int)
     parser.add_argument('--save_wandb', default=False, action='store_true')
 
     parser.add_argument('--save_model', default=True, action='store_true')
-    parser.add_argument('--save_model_freq', default=50_000, type=int)
+    parser.add_argument('--save_model_freq', default=10_000, type=int)
     parser.add_argument('--load_model', default=-1, type=int)
     parser.add_argument('--start_step', default=0, type=int)
     parser.add_argument('--start_episode', default=0, type=int)
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     args.proprioception_shape = env.observation_space.shape
     args.action_shape = env.action_space.shape
     args.env_action_space = env.action_space
-    args.image_shape = (64, 128, 3)
+    args.image_shape = (args.image_height, args.image_width, 3)
     args.net_params = config
     agent = SACRADAgent(vars(args))
     state, _ = env.reset()
