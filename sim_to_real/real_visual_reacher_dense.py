@@ -30,39 +30,9 @@ import msgpack  # or use `flax.serialization.to_bytes`
 np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
 env_name = "PandaPickCubeCartesian"
-env_cfg = manipulation.get_default_config(env_name)
-
-num_envs = 1024
-episode_length = int(4 / env_cfg.ctrl_dt)
 
 # Rasterizer is less feature-complete than ray-tracing backend but stable
-config_overrides = {
-    "episode_length": episode_length,
-    "vision": True,
-    "obs_noise.brightness": [0.75, 2.0],
-    "vision_config.use_rasterizer": False,
-    "vision_config.render_batch_size": num_envs,
-    "vision_config.render_width": 64,
-    "vision_config.render_height": 64,
-    "box_init_range": 0.1, # +- 10 cm
-    "action_history_length": 5,
-    "success_threshold": 0.03
-}
 
-env = manipulation.load(env_name, config=env_cfg,
-                        config_overrides=config_overrides
-)
-randomization_fn = functools.partial(randomize.domain_randomize,
-                                        num_worlds=num_envs
-)
-env = wrapper.wrap_for_brax_training(
-    env,
-    vision=True,
-    num_vision_envs=num_envs,
-    episode_length=episode_length,
-    action_repeat=1,
-    randomization_fn=randomization_fn
-)
 
 network_factory = functools.partial(
     ppo_networks_vision.make_ppo_networks_vision,
@@ -73,48 +43,21 @@ network_factory = functools.partial(
 )
 
 ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
-ppo_params.num_timesteps = 1
-ppo_params.num_envs = num_envs
-ppo_params.num_eval_envs = num_envs
+
 del ppo_params.network_factory
 ppo_params.network_factory = network_factory
 
+import pickle
+
+# Load the params object from the pickle file
+with open("params.pkl", "rb") as f:
+    params = pickle.load(f)
 
 
-x_data, y_data, y_dataerr = [], [], []
-times = [datetime.now()]
 
 
-def progress(num_steps, metrics):
-  clear_output(wait=True)
+inference_fn = make_inference_fn(network_factory=network_factory)
 
-  times.append(datetime.now())
-  x_data.append(num_steps)
-  y_data.append(metrics["eval/episode_reward"])
-  y_dataerr.append(metrics["eval/episode_reward_std"])
-
-  steps = ppo_params["num_timesteps"]
-  plt.xlim([steps * -0.1, steps * 1.25])
-  plt.ylim([0, 14])
-  plt.xlabel("# environment steps")
-  plt.ylabel("reward per episode")
-  plt.title(f"y={y_data[-1]:.3f}")
-  plt.errorbar(x_data, y_data, yerr=y_dataerr, color="blue")
-
-#   display(plt.gcf())
-
-
-train_fn = functools.partial(
-    ppo.train,
-    augment_pixels=True,
-    **dict(ppo_params),
-    progress_fn=progress,
-
-)
-
-make_inference_fn, params, metrics = train_fn(environment=env)
-print(f"time to jit: {times[1] - times[0]}")
-print(f"time to train: {times[-1] - times[1]}")
 
 
 with open("policy_params.msgpack", "rb") as f:
@@ -125,7 +68,7 @@ from brax.training import types
 dummy_params = params  # or create using network_factory()
 loaded_params = serialization.from_bytes(dummy_params, param_bytes)
 
-jit_inference_fn = jax.jit(make_inference_fn(loaded_params, deterministic=True))
+jit_inference_fn = jax.jit(inference_fn(loaded_params, deterministic=True))
 
 
 from PIL import Image
@@ -133,7 +76,7 @@ from PIL import Image
 # Loop through the images
 for i in range(1, 5):
     # Load the image
-    image_path = f"sim_to_real/test_images/franka-{i}.jpg"
+    image_path = f"test_images/franka-{i}.jpg"
     image = Image.open(image_path).resize((64, 64))
     
     # Convert to numpy array and cast to (64, 64, 3)
@@ -148,4 +91,8 @@ for i in range(1, 5):
     
     # Perform inference
     ctrl, _ = jit_inference_fn(obs, jax.random.PRNGKey(0))
-    print(f"Control output for franka-{i}.jpg:", ctrl)
+    # print(f"Control output for franka-{i}.jpg:", ctrl)
+    # Save the control output to a text file
+    output_path = "control_outputs.txt"
+    with open(output_path, "a") as output_file:
+        output_file.write(f"Control output for franka-{i}.jpg: {ctrl}\n")
