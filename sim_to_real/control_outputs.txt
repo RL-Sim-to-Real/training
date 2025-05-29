@@ -1,4 +1,5 @@
-Control output for franka-1.jpg: [-0.231 -0.184 -0.247]
-Control output for franka-2.jpg: [ 0.067 -0.392 -0.2  ]
-Control output for franka-3.jpg: [-0.117 -0.467 -0.161]
-Control output for franka-4.jpg: [-0.109  0.256 -0.677]
+
+Control output for franka-1.jpg: [ 0.356 -0.462 -0.03 ]
+Control output for franka-2.jpg: [ 0.65  -0.35  -0.235]
+Control output for franka-3.jpg: [-0.317  0.201 -0.23 ]
+Control output for franka-4.jpg: [-0.223  0.636 -0.681]
