@@ -1,0 +1,5 @@
+labels,success,failure,total,success_rate (%),comment
+0-5cm,5,0,5,100
+-5-0cm,5,0,5,100
+5-10cm,4,1,5,80,lifting failed
+-10-5cm,5,0,5,100
