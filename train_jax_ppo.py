@@ -386,8 +386,10 @@ def main(argv):
         writer.add_scalar(key, value, num_steps)
       writer.flush()
     if _RUN_EVALS.value:
-      print(f"{num_steps}: reward={metrics['eval/episode_reward']:.3f}")
+      if "eval/episode_reward" in metrics:
+        print(f"{num_steps}: reward={metrics['eval/episode_reward']:.3f}")
     if _LOG_TRAINING_METRICS.value:
+      
       if "episode/sum_reward" in metrics:
         print(
             f"{num_steps}: mean episode"
