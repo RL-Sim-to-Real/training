@@ -38,7 +38,9 @@ from orbax import checkpoint as ocp
 from tensorboardX import SummaryWriter
 import wandb
 
+# mujoco_playground imports
 import mujoco_playground
+from mujoco_playground import manipulation
 from mujoco_playground import registry
 from mujoco_playground import wrapper
 from mujoco_playground.config import dm_control_suite_params
@@ -203,9 +205,29 @@ def main(argv):
   del argv
 
   # Load environment configuration
-  env_cfg = registry.get_default_config(_ENV_NAME.value)
+  env_name = "PandaPickCubeCartesian"
+  env_cfg = manipulation.get_default_config(env_name)
 
-  ppo_params = get_rl_config(_ENV_NAME.value)
+  num_envs = 1024
+  episode_length = int(4 / env_cfg.ctrl_dt)
+
+  # Rasterizer is less feature-complete than ray-tracing backend but stable
+  config_overrides = {
+      "episode_length": episode_length,
+      "vision": True,
+      "obs_noise.brightness": [0.75, 2.0],
+      "vision_config.use_rasterizer": False,
+      "vision_config.render_batch_size": num_envs,
+      "vision_config.render_width": 64,
+      "vision_config.render_height": 64,
+      "box_init_range": 0.1, # +- 10 cm
+      "action_history_length": 5,
+      "success_threshold": 0.03,
+      "action_scale": 0.02, # 5 cm
+  }
+
+
+  ppo_params = get_rl_config(env_name=env_name)
 
   if _NUM_TIMESTEPS.present:
     ppo_params.num_timesteps = _NUM_TIMESTEPS.value
@@ -216,7 +238,7 @@ def main(argv):
   if _REWARD_SCALING.present:
     ppo_params.reward_scaling = _REWARD_SCALING.value
   if _EPISODE_LENGTH.present:
-    ppo_params.episode_length = _EPISODE_LENGTH.value
+    ppo_params.episode_length = episode_length # had to change this value myself
   if _NORMALIZE_OBSERVATIONS.present:
     ppo_params.normalize_observations = _NORMALIZE_OBSERVATIONS.value
   if _ACTION_REPEAT.present:
@@ -258,7 +280,10 @@ def main(argv):
   if _VISION.value:
     env_cfg.vision = True
     env_cfg.vision_config.render_batch_size = ppo_params.num_envs
-  env = registry.load(_ENV_NAME.value, config=env_cfg)
+  
+  env = manipulation.load(env_name, config=env_cfg,
+                        config_overrides=config_overrides
+  )
   if _RUN_EVALS.present:
     ppo_params.run_evals = _RUN_EVALS.value
   if _LOG_TRAINING_METRICS.present:
@@ -318,6 +343,10 @@ def main(argv):
   # Save environment configuration
   with open(ckpt_path / "config.json", "w", encoding="utf-8") as fp:
     json.dump(env_cfg.to_dict(), fp, indent=4)
+  
+  # save seed value to path
+  with open(ckpt_path / "seed.txt", "w", encoding="utf-8") as fp:
+    fp.write(str(_SEED.value))
 
   training_params = dict(ppo_params)
   if "network_factory" in training_params:
@@ -336,9 +365,15 @@ def main(argv):
     network_factory = network_fn
 
   if _DOMAIN_RANDOMIZATION.value:
-    training_params["randomization_fn"] = registry.get_domain_randomizer(
-        _ENV_NAME.value
-    )
+    # training_params["randomization_fn"] = registry.get_domain_randomizer(
+    #     _ENV_NAME.value
+    # )
+    from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision as randomize
+    randomization_fn = functools.partial(randomize.domain_randomize,
+                                        num_worlds=_NUM_ENVS.value)
+    training_params["randomization_fn"] = randomization_fn
+    
+    
 
   if _VISION.value:
     env = wrapper.wrap_for_brax_training(
@@ -501,7 +536,7 @@ def main(argv):
   frames = eval_env.render(
       traj, height=480, width=640, scene_option=scene_option
   )
-  media.write_video("rollout.mp4", frames, fps=fps)
+  media.write_video(str(ckpt_path / "rollout.mp4"), frames, fps=fps)
   print("Rollout video saved as 'rollout.mp4'.")
 
 
