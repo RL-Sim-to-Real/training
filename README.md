@@ -23,3 +23,16 @@ PandaPickCubeCartesian Training
 ```
 python train_jax_ppo.py --env_name=PandaPickCubeCartesian --vision --log_training_metrics --use_tb
 ```
+
+## Trouble shooting
+
+When using ROS if you encounter this error:
+
+```
+ImportError: /lib/x86_64-linux-gnu/libp11-kit.so.0: undefined symbol: ffi_type_pointer, version LIBFFI_BASE_7.0
+
+```
+
+```
+ ln -sf /usr/lib/x86_64-linux-gnu/libffi.so.7 ~/anaconda3/envs/[your env name here]/lib/libffi.so.7
+```

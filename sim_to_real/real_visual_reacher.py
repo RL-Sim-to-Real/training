@@ -21,6 +21,7 @@ import numpy as np
 
 import cv2
 
+
 from flax import serialization
 import msgpack  # or use `flax.serialization.to_bytes`
 from PIL import Image
@@ -54,7 +55,7 @@ def agent_process(action_name, action_shape, action_dtype,
 
     np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
-    env_name = "PandaPickCubeCartesian"
+    env_name = "PandaPickCubeCartesianModified"
 
     # Rasterizer is less feature-complete than ray-tracing backend but stable
 
@@ -74,7 +75,7 @@ def agent_process(action_name, action_shape, action_dtype,
 
 
     # Load the params object from the pickle file
-    with open("params.pkl", "rb") as f:
+    with open("policies/params_general.pkl", "rb") as f:
         params = pickle.load(f)
 
     inference_fn = make_inference_fn(network_factory=network_factory)
@@ -90,9 +91,10 @@ def agent_process(action_name, action_shape, action_dtype,
             key, _ = jax.random.split(key)
             # start = time.time()
             action, _ = jit_inference_fn({'pixels/view_0': img_array.copy()}, key) # imperical inference time is 0.016
+            # print(f"Action: {action}")
             # end = time.time()
             # print("Inference time:", end - start)
-            time.sleep(0.034) # set the cycle time to 50 ms
+            time.sleep(0.15) # set the cycle time to 50 ms
             action_array[:] = action
     except KeyboardInterrupt:
         print("Agent process interrupted by user.")
@@ -100,57 +102,74 @@ def agent_process(action_name, action_shape, action_dtype,
     action_shm.close()
     image_shm.close()
 
-
+def camera_process(image_name, image_shape, image_dtype):
+    from camera import Camera
+    camera = Camera()
+    image_shm = shared_memory.SharedMemory(name=image_name)
+    img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
+    while True:
+        start_time = time.time()
+        img = camera.capture_img()
+        end_time = time.time()
+        cv2.imshow("Captured Image", img)
+        cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
+        img = cv2.resize(img, (64, 64)) 
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
+        img_array[:] = img  # Copy the image to shared memory
+        # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 
 if __name__ == "__main__":
     from franka_real.FrankaPickCubeCartesian import FrankaPickCubeCartesian
-    env = FrankaPickCubeCartesian(camera_index=6)
-    img, ee_pos,_ = env.reset()
-   
+    env = FrankaPickCubeCartesian(camera_index=0)
+    ee_pos,_ = env.reset()
+    dummy_img = np.ones((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
     success_grasp = False
-    input("Press Enter to start the control loop...")
+
     action = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     action_shm = shared_memory.SharedMemory(create=True, size=action.nbytes)
     action_array = np.ndarray(buffer=action_shm.buf, dtype=np.float32, shape=action.shape)
-    image_shm = shared_memory.SharedMemory(create=True, size=img.nbytes)
-    image_array = np.ndarray(buffer=image_shm.buf, dtype=np.uint8, shape=img.shape)
-    image_array[:] = img  # Copy the initial image to shared memory
+    image_shm = shared_memory.SharedMemory(create=True, size=dummy_img.nbytes)
+    image_array = np.ndarray(buffer=image_shm.buf, dtype=np.uint8, shape=dummy_img.shape)
     action_array[:] = action  # Copy the initial action to shared memory
     p = Process(target=agent_process, args=(action_shm.name, action.shape, action.dtype,
-                                               image_shm.name, img.shape, img.dtype))
+                                               image_shm.name, dummy_img.shape, dummy_img.dtype))
+    c = Process(target=camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype))
+    c.start()  # Start the camera process
     p.start()
+    input("Press Enter to start the control loop...")
     while True:
-        cv2.imshow("Captured Image", cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
+
         
         # Resize the image using PIL
         action = action_array.copy()  # Copy the action from shared memory
-        action_y_z = 0.02 * action[:2] # this is the increment
+        action_y_z = 0.023 * action[:2] # this is the increment
+        print(f"Action: {action}")
         if (action[2] < -0.2 and not success_grasp): # grasp it only once
             success_grasp = env.grasp_object()
         target_y_z = action_y_z + ee_pos[1:3] # this is the target position
-        target_y_z = jp.array([jp.clip(target_y_z[0], -0.1, 0.1), jp.clip(target_y_z[1], 0.03, 0.2)]) # for safety
+        target_y_z = jp.array([jp.clip(target_y_z[0], -0.1, 0.1), jp.clip(target_y_z[1], 0.01, 0.2)]) # for safety
         target_x_y_z = jp.concatenate([jp.array([0.57]), target_y_z])
         start = time.time()
-        img, ee_pos = env.step(target_x_y_z)
+        ee_pos = env.step(target_x_y_z)
+        print(f"Target position: {target_x_y_z}, Current position: {ee_pos}")
         end = time.time()
         print(f"Time taken for one step: {end - start:.3f} seconds")
-        image_array[:] = img
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
         if success_grasp and ee_pos[2] > 0.1:
             print("Trial complete")
             break
     # time.sleep(2)
     ## slowly lower z value to place down
-    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.035])  # Keep x, y the same and set z to 0.02
+    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.059])  # Keep x, y the same and set z to 0.02
     env.step(target_x_y_z)
     env.open_gripper()
+    env.reset()
     env.close()
     p.join()  # Wait for the agent process to finish
+    c.join()  
     action_shm.close()
     action_shm.unlink()  # Unlink the shared memory
     image_shm.close()
