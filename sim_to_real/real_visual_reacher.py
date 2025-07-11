@@ -65,7 +65,7 @@ def agent_process(action_name, action_shape, action_dtype,
         policy_hidden_layer_sizes=[256, 256],
         value_hidden_layer_sizes= [256, 256],
         # activation=linen.relu, # only works with default activation right now
-        normalise_channels=True
+        normalise_channels=True,
     )
 
     ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
@@ -75,7 +75,7 @@ def agent_process(action_name, action_shape, action_dtype,
 
 
     # Load the params object from the pickle file
-    with open("policies/params_general.pkl", "rb") as f:
+    with open("policies/params_general_3d.pkl", "rb") as f:
         params = pickle.load(f)
 
     inference_fn = make_inference_fn(network_factory=network_factory)
@@ -104,7 +104,7 @@ def agent_process(action_name, action_shape, action_dtype,
 
 def camera_process(image_name, image_shape, image_dtype):
     from camera import Camera
-    camera = Camera()
+    camera = Camera(cam_index=4)
     image_shm = shared_memory.SharedMemory(name=image_name)
     img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
     while True:
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     dummy_img = np.ones((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
     success_grasp = False
 
-    action = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+    action = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
     action_shm = shared_memory.SharedMemory(create=True, size=action.nbytes)
     action_array = np.ndarray(buffer=action_shm.buf, dtype=np.float32, shape=action.shape)
     image_shm = shared_memory.SharedMemory(create=True, size=dummy_img.nbytes)
@@ -145,13 +145,14 @@ if __name__ == "__main__":
         
         # Resize the image using PIL
         action = action_array.copy()  # Copy the action from shared memory
-        action_y_z = 0.023 * action[:2] # this is the increment
+        # action_y_z = 0.05 * action[:2] # this is the increment
         print(f"Action: {action}")
-        if (action[2] < -0.2 and not success_grasp): # grasp it only once
+        if (action[3] < -0.25 and not success_grasp): # grasp it only once
             success_grasp = env.grasp_object()
-        target_y_z = action_y_z + ee_pos[1:3] # this is the target position
-        target_y_z = jp.array([jp.clip(target_y_z[0], -0.1, 0.1), jp.clip(target_y_z[1], 0.01, 0.2)]) # for safety
-        target_x_y_z = jp.concatenate([jp.array([0.57]), target_y_z])
+        # target_y_z = action_y_z + ee_pos[1:3] # this is the target position
+        # target_y_z = jp.array([jp.clip(target_y_z[0], -0.1, 0.1), jp.clip(target_y_z[1], 0.01, 0.2)]) # for safety
+        # target_x_y_z = jp.concatenate([jp.array([0.57]), target_y_z])
+        target_x_y_z = 0.01 * action[:3] + ee_pos
         start = time.time()
         ee_pos = env.step(target_x_y_z)
         print(f"Target position: {target_x_y_z}, Current position: {ee_pos}")
@@ -163,7 +164,7 @@ if __name__ == "__main__":
             break
     # time.sleep(2)
     ## slowly lower z value to place down
-    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.059])  # Keep x, y the same and set z to 0.02
+    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.061])  # Keep x, y the same and set z to 0.02
     env.step(target_x_y_z)
     env.open_gripper()
     env.reset()

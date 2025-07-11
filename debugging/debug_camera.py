@@ -39,7 +39,7 @@ episode_length = int(4 / env_cfg.ctrl_dt)
 # Rasterizer is less feature-complete than ray-tracing backend but stable
 config_overrides = {
     "episode_length": episode_length,
-    "vision": True,
+    "vision": False, # Don't need this for debugging, this calls Madrona
     "obs_noise.brightness": [0.75, 2.0],
     "vision_config.use_rasterizer": False,
     "vision_config.render_batch_size": num_envs,
@@ -59,7 +59,7 @@ randomization_fn = functools.partial(randomize.domain_randomize,
 )
 env = wrapper.wrap_for_brax_training(
     env,
-    vision=True,
+    vision=False,
     num_vision_envs=num_envs,
     episode_length=episode_length,
     action_repeat=1,
@@ -67,7 +67,7 @@ env = wrapper.wrap_for_brax_training(
 )
 
 jit_reset = jax.jit(env.reset)
-jit_step = jax.jit(env.step)
+# jit_step = jax.jit(env.step)
 
 state = jit_reset(jax.random.split(jax.random.PRNGKey(0), num_envs))
 # print(state)
@@ -77,6 +77,7 @@ def tile(img, d):
 
     img = img.reshape((d,d)+img.shape[1:])
     return np.concat(np.concat(img, axis=1), axis=1)
-plt.imshow(tile(state.obs['pixels/view_0'][:1], 1))
+frames = env.render([state], camera="mounted")
+plt.imshow(frames[0])
 plt.axis('off')
-plt.show()
+plt.savefig("output.png")

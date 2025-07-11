@@ -61,7 +61,7 @@ def make_inference_fn(
   if normalize_observations:
     normalize = running_statistics.normalize
   ppo_network = network_factory(
-      {'pixels/view_0': (64, 64, 3)}, 3, preprocess_observations_fn=normalize
+      {'pixels/view_0': (64, 64, 3)}, 4, preprocess_observations_fn=normalize
   )
   make_policy = ppo_networks.make_inference_fn(ppo_network)
   return make_policy
