@@ -75,7 +75,7 @@ def agent_process(action_name, action_shape, action_dtype,
 
 
     # Load the params object from the pickle file
-    with open("policies/params_general_3d.pkl", "rb") as f:
+    with open("policies/params_general_3d_v2.pkl", "rb") as f:
         params = pickle.load(f)
 
     inference_fn = make_inference_fn(network_factory=network_factory)
@@ -94,7 +94,7 @@ def agent_process(action_name, action_shape, action_dtype,
             # print(f"Action: {action}")
             # end = time.time()
             # print("Inference time:", end - start)
-            time.sleep(0.15) # set the cycle time to 50 ms
+            time.sleep(0.35) # set the cycle time to 50 ms
             action_array[:] = action
     except KeyboardInterrupt:
         print("Agent process interrupted by user.")
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     from franka_real.FrankaPickCubeCartesian import FrankaPickCubeCartesian
     env = FrankaPickCubeCartesian(camera_index=0)
     ee_pos,_ = env.reset()
-    dummy_img = np.ones((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
+    dummy_img = np.zeros((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
     success_grasp = False
 
     action = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
@@ -147,24 +147,29 @@ if __name__ == "__main__":
         action = action_array.copy()  # Copy the action from shared memory
         # action_y_z = 0.05 * action[:2] # this is the increment
         print(f"Action: {action}")
-        if (action[3] < -0.25 and not success_grasp): # grasp it only once
+        if (action[3] < -0.4 and not success_grasp): # grasp it only once
             success_grasp = env.grasp_object()
+            time.sleep(0.25)  # Wait for the gripper to close
         # target_y_z = action_y_z + ee_pos[1:3] # this is the target position
-        # target_y_z = jp.array([jp.clip(target_y_z[0], -0.1, 0.1), jp.clip(target_y_z[1], 0.01, 0.2)]) # for safety
+        if success_grasp:
+            action = jp.array([0,0,action[2],action[3]])
         # target_x_y_z = jp.concatenate([jp.array([0.57]), target_y_z])
-        target_x_y_z = 0.01 * action[:3] + ee_pos
+        target_x_y_z = 0.03 * action[:3] + ee_pos
+        target_x_y_z = jp.array([target_x_y_z[0], \
+                                 jp.clip(target_x_y_z[1], -0.4, 0.4), \
+                                 jp.clip(target_x_y_z[2], 0.035, 0.2)]) # for safety
         start = time.time()
         ee_pos = env.step(target_x_y_z)
         print(f"Target position: {target_x_y_z}, Current position: {ee_pos}")
         end = time.time()
         print(f"Time taken for one step: {end - start:.3f} seconds")
-
+        
         if success_grasp and ee_pos[2] > 0.1:
             print("Trial complete")
             break
     # time.sleep(2)
     ## slowly lower z value to place down
-    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.061])  # Keep x, y the same and set z to 0.02
+    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.04])  # Keep x, y the same and set z to 0.02
     env.step(target_x_y_z)
     env.open_gripper()
     env.reset()
