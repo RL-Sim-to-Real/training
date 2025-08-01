@@ -206,7 +206,7 @@ def main(argv):
 
   del argv
 
-  env_name = "PandaPickCubeCartesian"
+  env_name = "PandaPickCubeCartesianModified"
   env_cfg = manipulation.get_default_config(env_name)
 
   num_envs = 1024
@@ -224,7 +224,9 @@ def main(argv):
       "box_init_range": 0.1, # +- 10 cm
       "action_history_length": 5,
       "success_threshold": 0.03,
-      "action_scale": 0.02, # 5 cm
+      "action_scale": 0.02, # 5 cm,
+      "actuator": "position",
+      "action": "position"
   }
 
   env = manipulation.load(env_name, config=env_cfg,
@@ -245,14 +247,14 @@ def main(argv):
 
   network_factory = functools.partial(
     ppo_networks_vision.make_ppo_networks_vision,
-    policy_hidden_layer_sizes=[256, 256],
-    value_hidden_layer_sizes= [256, 256],
+    policy_hidden_layer_sizes=[512, 512],
+    value_hidden_layer_sizes= [512, 512],
     # activation=linen.relu, # only works with default activation right now
     normalise_channels=True
 )
 
   ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
-  ppo_params.num_timesteps = 7_000_000
+  ppo_params.num_timesteps = 1_000_000
   ppo_params.num_envs = num_envs
   ppo_params.num_eval_envs = num_envs
   del ppo_params.network_factory
@@ -362,6 +364,10 @@ def main(argv):
   # Train or load the model
   make_inference_fn, params, metrics = train_fn(environment=env)
 
+  # save final policy params
+  import pickle
+  with open(logdir / f"params_general_{config_overrides["action"]}_img_aug.pkl", "wb") as f:
+    pickle.dump(params, f)
   print("Done training.")
 
 
