@@ -58,12 +58,13 @@ def agent_process(action_name, action_shape, action_dtype,
     env_name = "PandaPickCubeCartesianModified"
 
     # Rasterizer is less feature-complete than ray-tracing backend but stable
+    layer_size = 256
 
 
     network_factory = functools.partial(
         ppo_networks_vision.make_ppo_networks_vision,
-        policy_hidden_layer_sizes=[256, 256],
-        value_hidden_layer_sizes= [256, 256],
+        policy_hidden_layer_sizes=[layer_size, layer_size],
+        value_hidden_layer_sizes= [layer_size, layer_size],
         # activation=linen.relu, # only works with default activation right now
         normalise_channels=True,
     )
@@ -75,7 +76,7 @@ def agent_process(action_name, action_shape, action_dtype,
 
 
     # Load the params object from the pickle file
-    with open("policies/params_general_3d_v2.pkl", "rb") as f:
+    with open("policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl", "rb") as f:
         params = pickle.load(f)
 
     inference_fn = make_inference_fn(network_factory=network_factory)
@@ -94,7 +95,7 @@ def agent_process(action_name, action_shape, action_dtype,
             # print(f"Action: {action}")
             # end = time.time()
             # print("Inference time:", end - start)
-            time.sleep(0.35) # set the cycle time to 50 ms
+            time.sleep(0.25) # set the cycle time to 40 ms
             action_array[:] = action
     except KeyboardInterrupt:
         print("Agent process interrupted by user.")
@@ -124,7 +125,10 @@ def camera_process(image_name, image_shape, image_dtype):
 if __name__ == "__main__":
     from franka_real.FrankaPickCubeCartesian import FrankaPickCubeCartesian
     env = FrankaPickCubeCartesian(camera_index=0)
+
     ee_pos,_ = env.reset()
+    # env.close_gripper()
+
     dummy_img = np.zeros((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
     success_grasp = False
 
@@ -141,20 +145,19 @@ if __name__ == "__main__":
     p.start()
     input("Press Enter to start the control loop...")
     while True:
-
-        
         # Resize the image using PIL
         action = action_array.copy()  # Copy the action from shared memory
         # action_y_z = 0.05 * action[:2] # this is the increment
         print(f"Action: {action}")
-        if (action[3] < -0.4 and not success_grasp): # grasp it only once
+        if (action[3] < -0.8 and not success_grasp): # grasp it only once
+            print("grasp")
             success_grasp = env.grasp_object()
             time.sleep(0.25)  # Wait for the gripper to close
         # target_y_z = action_y_z + ee_pos[1:3] # this is the target position
-        if success_grasp:
-            action = jp.array([0,0,action[2],action[3]])
+        # if success_grasp:
+        #     action = jp.array([0,0,action[2],action[3]])
         # target_x_y_z = jp.concatenate([jp.array([0.57]), target_y_z])
-        target_x_y_z = 0.03 * action[:3] + ee_pos
+        target_x_y_z = 0.02 * action[:3] + ee_pos
         target_x_y_z = jp.array([target_x_y_z[0], \
                                  jp.clip(target_x_y_z[1], -0.4, 0.4), \
                                  jp.clip(target_x_y_z[2], 0.035, 0.2)]) # for safety

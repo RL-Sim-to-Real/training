@@ -226,7 +226,7 @@ def main(argv):
       "success_threshold": 0.03,
       "action_scale": 0.02, # 5 cm,
       "actuator": "position",
-      "action": "position"
+      "action": "cartesian_increment"
   }
 
   env = manipulation.load(env_name, config=env_cfg,
@@ -247,14 +247,15 @@ def main(argv):
 
   network_factory = functools.partial(
     ppo_networks_vision.make_ppo_networks_vision,
-    policy_hidden_layer_sizes=[512, 512],
-    value_hidden_layer_sizes= [512, 512],
+    policy_hidden_layer_sizes=[256, 256],
+    value_hidden_layer_sizes= [256, 256],
     # activation=linen.relu, # only works with default activation right now
     normalise_channels=True
 )
 
   ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
-  ppo_params.num_timesteps = 1_000_000
+  if _NUM_TIMESTEPS.present:
+    ppo_params.num_timesteps = _NUM_TIMESTEPS.value
   ppo_params.num_envs = num_envs
   ppo_params.num_eval_envs = num_envs
   del ppo_params.network_factory
@@ -329,7 +330,7 @@ def main(argv):
   # Progress function for logging
   def progress(num_steps, metrics):
     times.append(time.monotonic())
-
+    print(f"{metrics}")
     # Log to Weights & Biases
     if _USE_WANDB.value and not _PLAY_ONLY.value:
       wandb.log(metrics, step=num_steps)
@@ -366,7 +367,7 @@ def main(argv):
 
   # save final policy params
   import pickle
-  with open(logdir / f"params_general_{config_overrides["action"]}_img_aug.pkl", "wb") as f:
+  with open(logdir / f"params_general_{config_overrides['action']}_img_aug.pkl", "wb") as f:
     pickle.dump(params, f)
   print("Done training.")
 

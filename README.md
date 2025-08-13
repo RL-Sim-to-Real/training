@@ -21,7 +21,7 @@ python tracker_non_visual_dense.py --replay_buffer_capacity=1_00_000 --env_steps
 PandaPickCubeCartesian Training
 
 ```
-python train_jax_ppo.py --env_name=PandaPickCubeCartesian --vision --log_training_metrics --use_tb
+python train_pick_cube_ppo.py --env_name=PandaPickCubeCartesian --vision --log_training_metrics --use_tb
 ```
 
 ## Trouble shooting

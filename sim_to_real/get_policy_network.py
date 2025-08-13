@@ -34,6 +34,7 @@ from brax.training.acme import specs
 from brax.training.agents.ppo import checkpoint
 from brax.training.agents.ppo import losses as ppo_losses
 from brax.training.agents.ppo import networks as ppo_networks
+from brax.training.agents.ppo import networks_vision as ppo_networks_vision
 from brax.training.types import Params
 from brax.training.types import PRNGKey
 import flax
@@ -55,7 +56,6 @@ def make_inference_fn(
         ppo_networks.PPONetworks
     ] = ppo_networks.make_ppo_networks,
 ):
-
 
   normalize = lambda x, y: x
   if normalize_observations:
