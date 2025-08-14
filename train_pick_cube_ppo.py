@@ -29,6 +29,7 @@ from brax.training.agents.ppo import networks_vision as ppo_networks_vision
 from brax.training.agents.ppo import train as ppo
 from etils import epath
 from flax.training import orbax_utils
+from flax import linen
 import jax
 import jax.numpy as jp
 import mediapy as media
@@ -71,7 +72,7 @@ from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vis
 
 _ENV_NAME = flags.DEFINE_string(
     "env_name",
-    "LeapCubeReorient",
+    "PandaPickCubeCartesianModified",
     f"Name of the environment. One of {', '.join(registry.ALL_ENVS)}",
 )
 _VISION = flags.DEFINE_boolean("vision", False, "Use vision input")
@@ -95,7 +96,7 @@ _DOMAIN_RANDOMIZATION = flags.DEFINE_boolean(
 )
 _SEED = flags.DEFINE_integer("seed", 1, "Random seed")
 _NUM_TIMESTEPS = flags.DEFINE_integer(
-    "num_timesteps", 7_000_000, "Number of timesteps"
+    "num_timesteps", 50_000_000, "Number of timesteps"
 )
 _NUM_EVALS = flags.DEFINE_integer("num_evals", 5, "Number of evaluations")
 _REWARD_SCALING = flags.DEFINE_float("reward_scaling", 0.1, "Reward scaling")
@@ -160,9 +161,16 @@ _LOG_TRAINING_METRICS = flags.DEFINE_boolean(
 )
 _TRAINING_METRICS_STEPS = flags.DEFINE_integer(
     "training_metrics_steps",
-    1_000_000,
+    5_000_000,
     "Number of steps between logging training metrics. Increase if training"
     " experiences slowdown.",
+)
+
+_ACTUATOR = flags.DEFINE_string("actuator", "position", "Type of actuator to use.")
+_ACTION_SPACE = flags.DEFINE_string(
+    "action",
+    "cartesian_increment",
+    "Type of action space to use. One of ['cartesian_increment', 'joint_increment']",
 )
 
 
@@ -206,7 +214,7 @@ def main(argv):
 
   del argv
 
-  env_name = "PandaPickCubeCartesianModified"
+  env_name = _ENV_NAME.value
   env_cfg = manipulation.get_default_config(env_name)
 
   num_envs = 1024
@@ -225,8 +233,8 @@ def main(argv):
       "action_history_length": 5,
       "success_threshold": 0.03,
       "action_scale": 0.02, # 5 cm,
-      "actuator": "position",
-      "action": "cartesian_increment"
+      "actuator": _ACTUATOR.value,  # 'position', 'velocity', 'torque'
+      "action": _ACTION_SPACE.value,  # 'cartesian_increment', 'joint_increment'
   }
 
   env = manipulation.load(env_name, config=env_cfg,
@@ -247,11 +255,11 @@ def main(argv):
 
   network_factory = functools.partial(
     ppo_networks_vision.make_ppo_networks_vision,
-    policy_hidden_layer_sizes=[256, 256],
-    value_hidden_layer_sizes= [256, 256],
-    # activation=linen.relu, # only works with default activation right now
+    policy_hidden_layer_sizes=_POLICY_HIDDEN_LAYER_SIZES.value,
+    value_hidden_layer_sizes=_VALUE_HIDDEN_LAYER_SIZES.value,
+    # activation=linen.relu, # use default swish activation
     normalise_channels=True
-)
+  )
 
   ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
   if _NUM_TIMESTEPS.present:
@@ -274,7 +282,7 @@ def main(argv):
   # Generate unique experiment name
   now = datetime.now()
   timestamp = now.strftime("%Y%m%d-%H%M%S")
-  exp_name = f"{env_name}-{timestamp}"
+  exp_name = f"{env_name}-{_ACTION_SPACE.value}-{_ACTUATOR.value}-{timestamp}"
   if _SUFFIX.value is not None:
     exp_name += f"-{_SUFFIX.value}"
   print(f"Experiment name: {exp_name}")
@@ -330,7 +338,7 @@ def main(argv):
   # Progress function for logging
   def progress(num_steps, metrics):
     times.append(time.monotonic())
-    print(f"{metrics}")
+    
     # Log to Weights & Biases
     if _USE_WANDB.value and not _PLAY_ONLY.value:
       wandb.log(metrics, step=num_steps)
@@ -353,6 +361,7 @@ def main(argv):
     
   train_fn = functools.partial(
       ppo.train,
+      seed=_SEED.value,
       augment_pixels=True,
       **dict(ppo_params),
       progress_fn=progress,
