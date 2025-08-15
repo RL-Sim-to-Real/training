@@ -6,9 +6,9 @@ SEEDS=(0 1 2 3 4)
 
 # Only include compatible pairs here:
 PAIRS=(
-  "position cartesian_increment"
-  "velocity joint_increment"
-  "position joint_increment"
+  # "position cartesian_increment"
+  "velocity joint"
+  "position joint"
   # add more valid pairs...
 )
 
@@ -32,6 +32,7 @@ for pair in "${PAIRS[@]}"; do
       --seed="$seed" \
       --actuator="$actuator" \
       --action="$action" \
+      --action_scale=1.0 \
       --use_tb \
       --log_training_metrics 
 

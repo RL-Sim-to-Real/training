@@ -173,6 +173,11 @@ _ACTION_SPACE = flags.DEFINE_string(
     "Type of action space to use. One of ['cartesian_increment', 'joint_increment']",
 )
 
+_ACTION_SCALE = flags.DEFINE_float(
+    "action_scale",
+    0.02,
+    "Scale factor of the action space.",
+)
 
 def get_rl_config(env_name: str) -> config_dict.ConfigDict:
   if env_name in mujoco_playground.manipulation._envs:
@@ -232,7 +237,7 @@ def main(argv):
       "box_init_range": 0.1, # +- 10 cm
       "action_history_length": 5,
       "success_threshold": 0.03,
-      "action_scale": 0.02, # 5 cm,
+      "action_scale": _ACTION_SCALE.value, # 5 cm,
       "actuator": _ACTUATOR.value,  # 'position', 'velocity', 'torque'
       "action": _ACTION_SPACE.value,  # 'cartesian_increment', 'joint_increment'
   }
