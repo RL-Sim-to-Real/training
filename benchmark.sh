@@ -6,9 +6,11 @@ SEEDS=(0 1 2 3 4)
 
 # Only include compatible pairs here:
 PAIRS=(
-  # "position cartesian_increment"
+  "position cartesian_increment"
+  "velocity joint_increment"
   "velocity joint"
   "position joint"
+  "position joint_increment"
   # add more valid pairs...
 )
 
@@ -21,8 +23,8 @@ for pair in "${PAIRS[@]}"; do
   pkill -f train_pick_cube_ppo.py || true
 
   # Pause before the next run to cool-down GPU
-  echo "Pausing for 5 seconds..."
-  sleep 5
+  echo "Pausing for 15 seconds..."
+  sleep 120
   
   for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"

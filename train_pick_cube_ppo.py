@@ -179,39 +179,14 @@ _ACTION_SCALE = flags.DEFINE_float(
     "Scale factor of the action space.",
 )
 
-def get_rl_config(env_name: str) -> config_dict.ConfigDict:
-  if env_name in mujoco_playground.manipulation._envs:
-    if _VISION.value:
-      return manipulation_params.brax_vision_ppo_config(env_name)
-    return manipulation_params.brax_ppo_config(env_name)
-  elif env_name in mujoco_playground.locomotion._envs:
-    if _VISION.value:
-      return locomotion_params.brax_vision_ppo_config(env_name)
-    return locomotion_params.brax_ppo_config(env_name)
-  elif env_name in mujoco_playground.dm_control_suite._envs:
-    if _VISION.value:
-      return dm_control_suite_params.brax_vision_ppo_config(env_name)
-    return dm_control_suite_params.brax_ppo_config(env_name)
-
-  raise ValueError(f"Env {env_name} not found in {registry.ALL_ENVS}.")
+_PROPRIOCEPTION = flags.DEFINE_boolean(
+    "proprioception",
+    True,
+    "Whether to include proprioception in the observation space.",
+)
 
 
-def rscope_fn(full_states, obs, rew, done):
-  """
-  All arrays are of shape (unroll_length, rscope_envs, ...)
-  full_states: dict with keys 'qpos', 'qvel', 'time', 'metrics'
-  obs: nd.array or dict obs based on env configuration
-  rew: nd.array rewards
-  done: nd.array done flags
-  """
-  # Calculate cumulative rewards per episode, stopping at first done flag
-  done_mask = jp.cumsum(done, axis=0)
-  valid_rewards = rew * (done_mask == 0)
-  episode_rewards = jp.sum(valid_rewards, axis=0)
-  print(
-      "Collected rscope rollouts with reward"
-      f" {episode_rewards.mean():.3f} +- {episode_rewards.std():.3f}"
-  )
+
 
 
 def main(argv):
@@ -219,7 +194,7 @@ def main(argv):
 
   del argv
 
-  env_name = _ENV_NAME.value
+  env_name = "PandaPickCubeCartesianModified"
   env_cfg = manipulation.get_default_config(env_name)
 
   num_envs = 1024
@@ -229,6 +204,7 @@ def main(argv):
   config_overrides = {
       "episode_length": episode_length,
       "vision": True,
+      "proprioception": _PROPRIOCEPTION.value, 
       "obs_noise.brightness": [0.75, 2.0],
       "vision_config.use_rasterizer": False,
       "vision_config.render_batch_size": num_envs,
@@ -237,15 +213,14 @@ def main(argv):
       "box_init_range": 0.1, # +- 10 cm
       "action_history_length": 5,
       "success_threshold": 0.03,
-      "action_scale": _ACTION_SCALE.value, # 5 cm,
-      "actuator": _ACTUATOR.value,  # 'position', 'velocity', 'torque'
-      "action": _ACTION_SPACE.value,  # 'cartesian_increment', 'joint_increment'
+      "action_scale": _ACTION_SCALE.value, 
+      "actuator": "position",
+      "action": "cartesian_increment",
   }
 
   env = manipulation.load(env_name, config=env_cfg,
                           config_overrides=config_overrides
   )
-
   randomization_fn = functools.partial(randomize.domain_randomize,
                                           num_worlds=num_envs
   )
@@ -257,13 +232,14 @@ def main(argv):
       action_repeat=1,
       randomization_fn=randomization_fn
   )
-
   network_factory = functools.partial(
-    ppo_networks_vision.make_ppo_networks_vision,
-    policy_hidden_layer_sizes=_POLICY_HIDDEN_LAYER_SIZES.value,
-    value_hidden_layer_sizes=_VALUE_HIDDEN_LAYER_SIZES.value,
-    # activation=linen.relu, # use default swish activation
-    normalise_channels=True
+      ppo_networks_vision.make_ppo_networks_vision,
+      policy_hidden_layer_sizes=[256, 256],
+      value_hidden_layer_sizes=[256, 256],
+      # activation=linen.relu, # only works with default activation right now
+      normalise_channels=True,
+      policy_obs_key="_prop" if env_cfg.proprioception else None, # determine wether to use proprioception
+      value_obs_key="_prop" if env_cfg.proprioception else None,
   )
 
   ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
@@ -287,7 +263,10 @@ def main(argv):
   # Generate unique experiment name
   now = datetime.now()
   timestamp = now.strftime("%Y%m%d-%H%M%S")
-  exp_name = f"{env_name}-{_ACTION_SPACE.value}-{_ACTUATOR.value}-{timestamp}"
+  exp_name = f"{env_name}-{_ACTION_SPACE.value}-{_ACTUATOR.value}"
+  if _PROPRIOCEPTION.value:
+    exp_name += "-_prop"
+  exp_name += f"-{timestamp}"
   if _SUFFIX.value is not None:
     exp_name += f"-{_SUFFIX.value}"
   print(f"Experiment name: {exp_name}")
