@@ -181,7 +181,7 @@ _ACTION_SCALE = flags.DEFINE_float(
 
 _PROPRIOCEPTION = flags.DEFINE_boolean(
     "proprioception",
-    True,
+    False,
     "Whether to include proprioception in the observation space.",
 )
 
@@ -199,7 +199,8 @@ def main(argv):
 
   num_envs = 1024
   episode_length = int(4 / env_cfg.ctrl_dt)
-
+  if _PROPRIOCEPTION.value:
+    print("Using proprioception in the observation space.")
   # Rasterizer is less feature-complete than ray-tracing backend but stable
   config_overrides = {
       "episode_length": episode_length,

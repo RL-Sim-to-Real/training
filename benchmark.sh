@@ -6,8 +6,8 @@ SEEDS=(0 1 2 3 4)
 
 # Only include compatible pairs here:
 PAIRS=(
-  "position cartesian_increment"
   "velocity joint_increment"
+  "position cartesian_increment"
   "velocity joint"
   "position joint"
   "position joint_increment"
@@ -22,9 +22,6 @@ for pair in "${PAIRS[@]}"; do
   echo "Cleaning up processes before next run..."
   pkill -f train_pick_cube_ppo.py || true
 
-  # Pause before the next run to cool-down GPU
-  echo "Pausing for 15 seconds..."
-  sleep 120
   
   for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"
@@ -36,7 +33,13 @@ for pair in "${PAIRS[@]}"; do
       --action="$action" \
       --action_scale=1.0 \
       --use_tb \
+      --proprioception \
       --log_training_metrics 
 
   done
+
+  # Pause before the next run to cool-down GPU
+  echo "Pausing for 2 minutes..."
+  echo "DO NOT INTERRUPT THIS PAUSE!"
+  sleep 120
 done
