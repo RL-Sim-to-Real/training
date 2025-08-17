@@ -31,9 +31,7 @@ for pair in "${PAIRS[@]}"; do
       --seed="$seed" \
       --actuator="$actuator" \
       --action="$action" \
-      --action_scale=1.0 \
       --use_tb \
-      --proprioception \
       --log_training_metrics 
 
   done
