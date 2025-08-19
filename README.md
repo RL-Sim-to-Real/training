@@ -31,9 +31,9 @@ python train_pick_cube_ppo.py --env_name=PandaPickCubeCartesianModified \
  --action=cartesian_increment
 ```
 
-## Trouble shooting
+## Troubleshooting
 
-When using ROS if you encounter this error:
+When using ROS, if you encounter this error:
 
 ```
 ImportError: /lib/x86_64-linux-gnu/libp11-kit.so.0: undefined symbol: ffi_type_pointer, version LIBFFI_BASE_7.0
@@ -43,3 +43,15 @@ ImportError: /lib/x86_64-linux-gnu/libp11-kit.so.0: undefined symbol: ffi_type_p
 ```
  ln -sf /usr/lib/x86_64-linux-gnu/libffi.so.7 ~/anaconda3/envs/[your env name here]/lib/libffi.so.7
 ```
+
+## Installation Guide 
+Clone the following repos
+```
+git@github.com:ICRA2026/brax.git
+git@github.com:ICRA2026/mujoco_playground.git
+git@github.com:azimi99/madrona_mjx.git
+git@github.com:ICRA2026/training.git
+```
+
+Start by installing Madrona first and ensure you have `jax[cuda_local]<=0.5.3` and your `flax <= 0.10.6`.
+**Note**: When building Madrona, ensure you use `cmake -DLOAD_VULKAN=OFF ..`
