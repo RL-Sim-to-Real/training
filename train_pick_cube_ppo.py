@@ -44,8 +44,6 @@ import mujoco_playground
 from mujoco_playground import manipulation
 from mujoco_playground import registry
 from mujoco_playground import wrapper
-from mujoco_playground.config import dm_control_suite_params
-from mujoco_playground.config import locomotion_params
 from mujoco_playground.config import manipulation_params
 
 xla_flags = os.environ.get("XLA_FLAGS", "")
@@ -366,6 +364,64 @@ def main(argv):
   print("Done training.")
 
 
+
+  # record video of final policy
+
+  inference_fn = make_inference_fn(params, deterministic=True)
+  jit_inference_fn = jax.jit(inference_fn)
+
+  # Prepare for evaluation
+  eval_env = (
+      None if _VISION.value else registry.load(_ENV_NAME.value, config=env_cfg)
+  )
+  num_envs = 1
+  if _VISION.value:
+    eval_env = env
+    num_envs = env_cfg.vision_config.render_batch_size
+
+  jit_reset = jax.jit(eval_env.reset)
+  jit_step = jax.jit(eval_env.step)
+
+  rng = jax.random.PRNGKey(123)
+  rng, reset_rng = jax.random.split(rng)
+  if _VISION.value:
+    reset_rng = jp.asarray(jax.random.split(reset_rng, num_envs))
+  state = jit_reset(reset_rng)
+  state0 = (
+      jax.tree_util.tree_map(lambda x: x[0], state) if _VISION.value else state
+  )
+  rollout = [state0]
+
+  for _ in range(env_cfg.episode_length):
+    act_rng, rng = jax.random.split(rng)
+    ctrl, _ = jit_inference_fn(state.obs, act_rng)
+    state = jit_step(state, ctrl)
+    state0 = (
+        jax.tree_util.tree_map(lambda x: x[0], state)
+        if _VISION.value
+        else state
+    )
+    rollout.append(state0)
+    if state0.done:
+      break
+
+  # Render and save the rollout
+  render_every = 2
+  fps = 1.0 / eval_env.dt / render_every
+  print(f"FPS for rendering: {fps}")
+
+  traj = rollout[::render_every]
+
+  scene_option = mujoco.MjvOption()
+  scene_option.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = False
+  scene_option.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = False
+  scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = False
+
+  frames = eval_env.render(
+      traj, height=480, width=640, scene_option=scene_option
+  )
+  media.write_video(str(ckpt_path / "rollout.mp4"), frames, fps=fps)
+  print("Rollout video saved as 'rollout.mp4'.")
 
 
 
