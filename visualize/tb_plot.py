@@ -149,10 +149,11 @@ def plot_groups(
     groups: Dict[str, List[str]],
     out_dir: str,
     xaxis: str,
+    yaxis: str,
     smoothing: float,
     downsample: int,
     grid_points: int,
-    title_suffix: str,
+    title: str,
     single_figure: bool,
 ):
     os.makedirs(out_dir, exist_ok=True)
@@ -207,7 +208,7 @@ def plot_groups(
                 plt.fill_between(gx, mean - se, mean + se, alpha=0.25, linewidth=0)
             plt.xlabel(xaxis.upper())
             plt.ylabel(tag)
-            plt.title(f"{tag}{title_suffix}")
+            plt.title(f"{title}")
             plt.legend(frameon=False)
             plt.tight_layout()
             base = os.path.join(out_dir, sanitize(tag))
@@ -241,8 +242,8 @@ def plot_groups(
 
     if single_figure:
         plt.xlabel(xaxis.upper())
-        plt.ylabel(", ".join(tag_list))
-        ttl = f"Overlay: {', '.join(tag_list)}{title_suffix}"
+        plt.ylabel(yaxis.upper() if yaxis else "Value")
+        ttl = f"Overlay: {title}"
         plt.title(ttl)
         plt.legend(legend_entries, frameon=False)
         plt.tight_layout()
@@ -272,6 +273,7 @@ def main():
         help="Regex that captures a group name from the run leaf dir (group 1). e.g., '^(.*?)-seed\\d+$'",
     )
     ap.add_argument("--xaxis", choices=["steps", "wall_time"], default="steps")
+    ap.add_argument("--yaxis", default="", help="y-axis label")
     ap.add_argument("--smoothing", type=float, default=0.0)
     ap.add_argument("--downsample", type=int, default=0)
     ap.add_argument(
@@ -283,6 +285,8 @@ def main():
         help="Plot all tags on the same axis in a single figure.",
     )
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--title", default="",
+                       help="Optional title for the plot. If not provided, uses tag names.")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -308,19 +312,17 @@ def main():
         for g, members in groups.items():
             print(f"[Group {g}] {len(members)} runs")
 
-    title_suffix = ""
-    if args.smoothing > 0:
-        title_suffix += f" (EWMA α={args.smoothing})"
 
     plot_groups(
         tag_list=tag_list,
         groups=groups,
         out_dir=args.out,
         xaxis=args.xaxis,
+        yaxis=args.yaxis,
         smoothing=args.smoothing,
         downsample=args.downsample,
         grid_points=args.grid_points,
-        title_suffix=title_suffix,
+        title=args.title or ", ".join(tag_list),
         single_figure=args.combine_tags,
     )
     print(f"Done. Figures saved to: {os.path.abspath(args.out)}")
