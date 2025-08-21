@@ -213,8 +213,8 @@ def main(argv):
       "action_history_length": 5,
       "success_threshold": 0.03,
       "action_scale": _ACTION_SCALE.value, 
-      "actuator": "position",
-      "action": "cartesian_increment",
+      "actuator": _ACTUATOR.value,
+      "action": _ACTION_SPACE.value,
   }
 
   env = manipulation.load(env_name, config=env_cfg,
@@ -370,17 +370,9 @@ def main(argv):
   inference_fn = make_inference_fn(params, deterministic=True)
   jit_inference_fn = jax.jit(inference_fn)
 
-  # Prepare for evaluation
-  eval_env = (
-      None if _VISION.value else registry.load(_ENV_NAME.value, config=env_cfg)
-  )
-  num_envs = 1
-  if _VISION.value:
-    eval_env = env
-    num_envs = env_cfg.vision_config.render_batch_size
 
-  jit_reset = jax.jit(eval_env.reset)
-  jit_step = jax.jit(eval_env.step)
+  jit_reset = jax.jit(env.reset)
+  jit_step = jax.jit(env.step)
 
   rng = jax.random.PRNGKey(123)
   rng, reset_rng = jax.random.split(rng)
@@ -407,7 +399,7 @@ def main(argv):
 
   # Render and save the rollout
   render_every = 2
-  fps = 1.0 / eval_env.dt / render_every
+  fps = 1.0 / env.dt / render_every
   print(f"FPS for rendering: {fps}")
 
   traj = rollout[::render_every]
@@ -417,7 +409,7 @@ def main(argv):
   scene_option.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = False
   scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = False
 
-  frames = eval_env.render(
+  frames = env.render(
       traj, height=480, width=640, scene_option=scene_option
   )
   media.write_video(str(ckpt_path / "rollout.mp4"), frames, fps=fps)
