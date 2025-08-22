@@ -2,7 +2,7 @@
 
 ENV_NAME="PandaPickCubeCartesianModified"
 NUM_TIMESTEPS=50_000_000
-SEEDS=(0 1)
+SEEDS=(1)
 
 
 # Only include compatible pairs here:
@@ -39,6 +39,7 @@ for pair in "${PAIRS[@]}"; do
       --action="$action" \
       --use_tb \
       --log_training_metrics \
+      --vision \
       --proprioception
 
   done
@@ -46,7 +47,7 @@ for pair in "${PAIRS[@]}"; do
   # Pause before the next run to cool-down GPU
   echo "Pausing for 2 minutes..."
   echo "DO NOT INTERRUPT THIS PAUSE!"
-  sleep 30
+  sleep 5
 done
 
 # Without proprioception

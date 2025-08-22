@@ -2,8 +2,8 @@
 
 ENV_NAME="PandaPickCubeCartesianModified"
 NUM_TIMESTEPS=50_000_000
-SEEDS=(0 1)
-
+SEEDS=(1)
+DEVICE_ID=0
 
 # Only include compatible pairs here:
 
@@ -39,6 +39,7 @@ for pair in "${PAIRS[@]}"; do
       --action="$action" \
       --use_tb \
       --log_training_metrics \
+      --vision \
       --proprioception
 
   done
