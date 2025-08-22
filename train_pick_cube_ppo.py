@@ -21,6 +21,8 @@ import os
 import time
 import warnings
 
+from tqdm import tqdm
+
 from absl import app
 from absl import flags
 from absl import logging
@@ -164,10 +166,10 @@ _TRAINING_METRICS_STEPS = flags.DEFINE_integer(
     " experiences slowdown.",
 )
 
-_ACTUATOR = flags.DEFINE_string("actuator", "position", "Type of actuator to use.")
+_ACTUATOR = flags.DEFINE_string("actuator", "torque", "Type of actuator to use.")
 _ACTION_SPACE = flags.DEFINE_string(
     "action",
-    "cartesian_increment",
+    "joint",
     "Type of action space to use. One of ['cartesian_increment', 'joint_increment']",
 )
 
@@ -192,7 +194,7 @@ def main(argv):
 
   del argv
 
-  env_name = "PandaPickCubeCartesianModified"
+  env_name = _ENV_NAME.value
   env_cfg = manipulation.get_default_config(env_name)
 
   num_envs = 1024
@@ -359,60 +361,48 @@ def main(argv):
 
   # save final policy params
   import pickle
-  with open(logdir / f"params_general_{config_overrides['action']}_img_aug.pkl", "wb") as f:
+  with open(logdir / f"params_general_{_ACTION_SPACE.value}-{_ACTUATOR.value}_img_aug.pkl", "wb") as f:
     pickle.dump(params, f)
   print("Done training.")
 
 
+  ## Record video of final policy
+  def unvmap(x):
+    return jax.tree.map(lambda y: y[0], x)
 
-  # record video of final policy
-
-  inference_fn = make_inference_fn(params, deterministic=True)
-  jit_inference_fn = jax.jit(inference_fn)
 
 
   jit_reset = jax.jit(env.reset)
   jit_step = jax.jit(env.step)
+  jit_inference_fn = jax.jit(make_inference_fn(params, deterministic=True))
+
+  # Prepare for evaluation
 
   rng = jax.random.PRNGKey(123)
-  rng, reset_rng = jax.random.split(rng)
-  if _VISION.value:
-    reset_rng = jp.asarray(jax.random.split(reset_rng, num_envs))
-  state = jit_reset(reset_rng)
-  state0 = (
-      jax.tree_util.tree_map(lambda x: x[0], state) if _VISION.value else state
-  )
-  rollout = [state0]
+  rollout = []
+  n_episodes = 1
+  to_keep = 256
 
-  for _ in range(env_cfg.episode_length):
-    act_rng, rng = jax.random.split(rng)
-    ctrl, _ = jit_inference_fn(state.obs, act_rng)
-    state = jit_step(state, ctrl)
-    state0 = (
-        jax.tree_util.tree_map(lambda x: x[0], state)
-        if _VISION.value
-        else state
-    )
-    rollout.append(state0)
-    if state0.done:
-      break
+  def keep_until(state, i):
+      return jax.tree.map(lambda x: x[:i], state)
 
-  # Render and save the rollout
-  render_every = 2
-  fps = 1.0 / env.dt / render_every
-  print(f"FPS for rendering: {fps}")
+  for _ in range(n_episodes):
+      key_rng = jax.random.split(rng, num_envs)
+      state = jit_reset(key_rng)
+      rollout.append(keep_until(state, to_keep))
+      for i in tqdm(range(env_cfg.episode_length)):
+          act_rng, rng = jax.random.split(rng)
+          act_rng = jax.random.split(act_rng, num_envs)
+          ctrl, _ = jit_inference_fn(state.obs, act_rng)
+          state = jit_step(state, ctrl)
+          rollout.append(keep_until(state, to_keep))
 
-  traj = rollout[::render_every]
+  render_every = 1
+  frames = env.render([unvmap(s) for s in rollout][::render_every])
 
-  scene_option = mujoco.MjvOption()
-  scene_option.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = False
-  scene_option.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = False
-  scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = False
-
-  frames = env.render(
-      traj, height=480, width=640, scene_option=scene_option
-  )
-  media.write_video(str(ckpt_path / "rollout.mp4"), frames, fps=fps)
+  video_path = logdir / "rollout.mp4"
+  media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
+  print(f"Rollout video saved as '{video_path}'.")
   print("Rollout video saved as 'rollout.mp4'.")
 
 

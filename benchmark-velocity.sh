@@ -2,16 +2,16 @@
 
 ENV_NAME="PandaPickCubeCartesianModified"
 NUM_TIMESTEPS=50_000_000
-SEEDS=(0 1 2)
+SEEDS=(0 1)
 
 
 # Only include compatible pairs here:
 
 PAIRS=(
-  "position cartesian_increment"
-  "torque joint_increment"
-  "velocity joint_increment"
-  "position joint_increment"
+  # "position cartesian_increment"
+  # "position joint_increment"
+  # "torque joint"
+  "velocity joint"
   # "position joint"
   # add more valid pairs...
 )
@@ -46,7 +46,7 @@ for pair in "${PAIRS[@]}"; do
   # Pause before the next run to cool-down GPU
   echo "Pausing for 2 minutes..."
   echo "DO NOT INTERRUPT THIS PAUSE!"
-  sleep 120
+  sleep 30
 done
 
 # Without proprioception
@@ -78,5 +78,5 @@ for pair in "${PAIRS[@]}"; do
   # Pause before the next run to cool-down GPU
   echo "Pausing for 2 minutes..."
   echo "DO NOT INTERRUPT THIS PAUSE!"
-  sleep 120
+  sleep 5
 done
