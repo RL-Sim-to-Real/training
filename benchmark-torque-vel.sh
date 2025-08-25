@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 
 ENV_NAME="PandaPickCubeCartesianModified"
-NUM_TIMESTEPS=50_000_000
+NUM_TIMESTEPS=1_000_000
 SEEDS=(1)
 
 
 # Only include compatible pairs here:
 
 PAIRS=(
-  # "position cartesian_increment"
-  # "position joint_increment"
+  "velocity joint"
   "torque joint"
-  # "velocity joint"
-  # "position joint"
-  # add more valid pairs...
 )
 
 # With prioception
@@ -40,6 +36,7 @@ for pair in "${PAIRS[@]}"; do
       --use_tb \
       --log_training_metrics \
       --vision \
+      --action_scale=1.0 \
       --proprioception
 
   done
@@ -72,8 +69,9 @@ for pair in "${PAIRS[@]}"; do
       --actuator="$actuator" \
       --action="$action" \
       --use_tb \
-      --log_training_metrics
-
+      --log_training_metrics \
+      --vision \
+      --action_scale=1.0 \
   done
 
   # Pause before the next run to cool-down GPU

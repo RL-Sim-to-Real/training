@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ENV_NAME="PandaPickCubeCartesianModified"
-NUM_TIMESTEPS=50_000_000
-SEEDS=(1)
+NUM_TIMESTEPS=1_000_000
+SEEDS=(2)
 DEVICE_ID=0
 
 # Only include compatible pairs here:
@@ -72,7 +72,8 @@ for pair in "${PAIRS[@]}"; do
       --actuator="$actuator" \
       --action="$action" \
       --use_tb \
-      --log_training_metrics
+      --log_training_metrics \
+      --vision
 
   done
 
