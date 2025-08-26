@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 ENV_NAME="PandaPickCubeCartesianModified"
-NUM_TIMESTEPS=1_000_000
-SEEDS=(2)
+NUM_TIMESTEPS=50_000_000
+SEEDS=(1)
 DEVICE_ID=0
 
 # Only include compatible pairs here:

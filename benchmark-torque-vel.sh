@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ENV_NAME="PandaPickCubeCartesianModified"
-NUM_TIMESTEPS=1_000_000
+NUM_TIMESTEPS=50_000_000
 SEEDS=(1)
 
 
@@ -12,7 +12,7 @@ PAIRS=(
   "torque joint"
 )
 
-# With prioception
+
 for pair in "${PAIRS[@]}"; do
   set -- $pair
   actuator="$1"
@@ -21,7 +21,7 @@ for pair in "${PAIRS[@]}"; do
   echo "Cleaning up processes before next run..."
   pkill -f train_pick_cube_ppo.py || true
 
-  
+  # With prioception
   for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"
 
@@ -41,22 +41,7 @@ for pair in "${PAIRS[@]}"; do
 
   done
 
-  # Pause before the next run to cool-down GPU
-  echo "Pausing for 2 minutes..."
-  echo "DO NOT INTERRUPT THIS PAUSE!"
-  sleep 5
-done
-
-# Without proprioception
-for pair in "${PAIRS[@]}"; do
-  set -- $pair
-  actuator="$1"
-  action="$2"
-  # Perform process cleanup
-  echo "Cleaning up processes before next run..."
-  pkill -f train_pick_cube_ppo.py || true
-
-  
+  # Without proprioception
   for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"
     
@@ -71,11 +56,15 @@ for pair in "${PAIRS[@]}"; do
       --use_tb \
       --log_training_metrics \
       --vision \
-      --action_scale=1.0 \
+      --action_scale=1.0 
+
   done
+
 
   # Pause before the next run to cool-down GPU
   echo "Pausing for 2 minutes..."
   echo "DO NOT INTERRUPT THIS PAUSE!"
   sleep 5
 done
+
+
