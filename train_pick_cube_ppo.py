@@ -185,15 +185,14 @@ _PROPRIOCEPTION = flags.DEFINE_boolean(
     "Whether to include proprioception in the observation space.",
 )
 
-
-
-
+_DEVICE_ID = flags.DEFINE_integer("device_id", 0, "ID of the GPU device to use.")
 
 def main(argv):
   """Run training and evaluation for the specified environment."""
 
   del argv
-
+  os.environ["CUDA_VISIBLE_DEVICES"] = str(_DEVICE_ID.value)
+  print("JAX devices:", jax.devices())
   env_name = _ENV_NAME.value
   env_cfg = manipulation.get_default_config(env_name)
 
