@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
 ENV_NAME="PandaPickCubeCartesianModified"
-NUM_TIMESTEPS=50_000_000
-SEEDS=(1 2 3)
+NUM_TIMESTEPS=1_000_000
+SEEDS=(1)
 
 
 # Only include compatible pairs here:
 
 PAIRS=(
   "position cartesian_increment"
-  "position joint_increment"
+  # "position joint_increment"
 )
 
 # With prioception
@@ -22,24 +22,24 @@ for pair in "${PAIRS[@]}"; do
   pkill -f train_pick_cube_ppo.py || true
 
   
-  for seed in "${SEEDS[@]}"; do
-    echo "Running actuator=$actuator action=$action seed=$seed"
+  # for seed in "${SEEDS[@]}"; do
+  #   echo "Running actuator=$actuator action=$action seed=$seed"
 
-    # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
-    # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
-    python train_pick_cube_ppo.py \
-      --env_name="$ENV_NAME" \
-      --num_timesteps="$NUM_TIMESTEPS" \
-      --seed="$seed" \
-      --actuator="$actuator" \
-      --action="$action" \
-      --use_tb \
-      --log_training_metrics \
-      --vision \
-      --proprioception \
-      --device_id=0
+  #   # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
+  #   # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
+  #   python train_pick_cube_ppo.py \
+  #     --env_name="$ENV_NAME" \
+  #     --num_timesteps="$NUM_TIMESTEPS" \
+  #     --seed="$seed" \
+  #     --actuator="$actuator" \
+  #     --action="$action" \
+  #     --use_tb \
+  #     --log_training_metrics \
+  #     --vision \
+  #     --proprioception \
+  #     --device_id=0
 
-  done
+  # done
 
   for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"
