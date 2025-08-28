@@ -207,7 +207,7 @@ def plot_groups(
                 plt.plot(gx, mean, linewidth=1.8, label=gname)
                 plt.fill_between(gx, mean - se, mean + se, alpha=0.25, linewidth=0)
             plt.xlabel(xaxis.upper())
-            plt.ylabel(tag)
+            plt.ylabel(yaxis.upper())
             plt.title(f"{title}")
             plt.legend(frameon=False)
             plt.tight_layout()
