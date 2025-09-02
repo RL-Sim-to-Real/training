@@ -1,0 +1,210 @@
+# @title Import MuJoCo, MJX, and Brax
+import os
+# On your second reading, load the compiled rendering backend to save time!
+# os.environ["MADRONA_MWGPU_KERNEL_CACHE"] = "<YOUR_PATH>/madrona_mjx/build/cache"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"  # Ensure that Madrona gets the chance to pre-allocate memory before Jax
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Ensure CUDA is initialized correctly
+
+
+from datetime import datetime
+import functools
+
+
+from flax import linen
+from IPython.display import clear_output
+import jax
+from jax import numpy as jp
+from matplotlib import pyplot as plt
+import mediapy as media
+import numpy as np
+
+
+import cv2
+
+
+from flax import serialization
+import msgpack  # or use `flax.serialization.to_bytes`
+from PIL import Image
+# Deserialize using empty tree as template
+from brax.training import types
+import time
+
+
+from multiprocessing import shared_memory, Process, set_start_method
+
+try:
+    set_start_method('spawn')  # Use 'spawn' to avoid issues with JAX and multiprocessing
+except RuntimeError:
+    pass
+
+
+
+
+
+
+def agent_process(action_name, action_shape, action_dtype, 
+                  image_name, image_shape, image_dtype):
+    from brax.training.agents.ppo import networks_vision as ppo_networks_vision
+    from brax.training.agents.ppo import train as ppo
+    from mujoco_playground import manipulation
+    from mujoco_playground import wrapper
+    from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision as randomize
+    from mujoco_playground.config import manipulation_params
+    from get_policy_network import make_inference_fn #TODO: Figure this out
+    import pickle
+
+    np.set_printoptions(precision=3, suppress=True, linewidth=100)
+
+    env_name = "PandaPickCubeCartesianModified"
+
+    # Rasterizer is less feature-complete than ray-tracing backend but stable
+    layer_size = 256
+
+
+    network_factory = functools.partial(
+        ppo_networks_vision.make_ppo_networks_vision,
+        policy_hidden_layer_sizes=[layer_size, layer_size],
+        value_hidden_layer_sizes= [layer_size, layer_size],
+        # activation=linen.relu, # only works with default activation right now
+        normalise_channels=True,
+    )
+
+    ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
+
+    del ppo_params.network_factory
+    ppo_params.network_factory = network_factory
+
+
+    # Load the params object from the pickle file
+    with open("policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl", "rb") as f:
+        params = pickle.load(f)
+
+    inference_fn = make_inference_fn(network_factory=network_factory)
+
+    jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
+    action_shm = shared_memory.SharedMemory(name=action_name)
+    action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
+    image_shm = shared_memory.SharedMemory(name=image_name)
+    img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
+    key = jax.random.PRNGKey(0)
+    try:
+        while True:
+            key, _ = jax.random.split(key)
+            # start = time.time()
+            action, _ = jit_inference_fn({'pixels/view_0': img_array.copy()}, key) # imperical inference time is 0.016
+            # print(f"Action: {action}")
+            # end = time.time()
+            # print("Inference time:", end - start)
+            time.sleep(0.25) # set the cycle time to 40 ms
+            action_array[:] = action
+    except KeyboardInterrupt:
+        print("Agent process interrupted by user.")
+
+    action_shm.close()
+    image_shm.close()
+
+def camera_process(image_name, image_shape, image_dtype):
+    from camera import Camera
+    camera = Camera(cam_index=4)
+    image_shm = shared_memory.SharedMemory(name=image_name)
+    img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
+    while True:
+        start_time = time.time()
+        img = camera.capture_img()
+        end_time = time.time()
+        cv2.imshow("Captured Image", img)
+        cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
+        img = cv2.resize(img, (64, 64)) 
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
+        img_array[:] = img  # Copy the image to shared memory
+        # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+def run_trial(action_array, env):
+    trial_length = 300
+    success = False
+    grasped = False
+    ee_pos,_ = env.reset()
+    t_start = time.time()
+    while True:
+        # Resize the image using PIL
+        action = action_array.copy()  # Copy the action from shared memory
+        # action_y_z = 0.05 * action[:2] # this is the increment
+        print(f"Action: {action}")
+        if (action[3] < -0.8 and not grasped): # grasp it only once
+            print("attempting grasp")
+            grasped = env.grasp_object()
+            time.sleep(0.25)  # Wait for the gripper to close
+        
+        # reopen gripper if grasp was unsuccessful
+        fingertip_width = env.get_fingertip_width()
+        if grasped and fingertip_width < 0.035:
+            print('unsuccessful grasp, opening gripper')
+            env.gripper.stop_action()
+            env.gripper.open()
+            time.sleep(0.25)  # Wait for the gripper to open
+            grasped = False
+
+        target_x_y_z = 0.02 * action[:3] + ee_pos
+        target_x_y_z = jp.array([target_x_y_z[0], \
+                                 jp.clip(target_x_y_z[1], -0.4, 0.4), \
+                                 jp.clip(target_x_y_z[2], 0.035, 0.2)]) # for safety
+        start = time.time()
+        ee_pos = env.step(target_x_y_z)
+        print(f"Target position: {target_x_y_z}, Current position: {ee_pos}")
+        end = time.time()
+        print(f"Time taken for one step: {end - start:.3f} seconds")
+
+        fingertip_width = env.get_fingertip_width()
+        if grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
+            print("Trial complete")
+            success = True
+            break
+
+        if time.time() - t_start > trial_length:
+            break
+
+    # put the cube back down
+    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.04])  # Keep x, y the same and set z to 0.02
+    env.step(target_x_y_z)
+    env.open_gripper()
+
+    return success
+
+def main():
+    from franka_real.FrankaPickCubeCartesian import FrankaPickCubeCartesian
+    env = FrankaPickCubeCartesian(camera_index=0)
+
+    dummy_img = np.zeros((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
+
+    action = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    action_shm = shared_memory.SharedMemory(create=True, size=action.nbytes)
+    action_array = np.ndarray(buffer=action_shm.buf, dtype=np.float32, shape=action.shape)
+    image_shm = shared_memory.SharedMemory(create=True, size=dummy_img.nbytes)
+    image_array = np.ndarray(buffer=image_shm.buf, dtype=np.uint8, shape=dummy_img.shape)
+    action_array[:] = action  # Copy the initial action to shared memory
+    p = Process(target=agent_process, args=(action_shm.name, action.shape, action.dtype,
+                                               image_shm.name, dummy_img.shape, dummy_img.dtype))
+    c = Process(target=camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype))
+    c.start()  # Start the camera process
+    p.start()
+    input("Press Enter to start the control loop...")
+    results = []
+    for _ in range(2):
+        result = run_trial(action_array, env)
+        results.append(result)
+
+    env.reset()
+    env.close()
+    p.join()  # Wait for the agent process to finish
+    c.join()  
+    action_shm.close()
+    action_shm.unlink()  # Unlink the shared memory
+    image_shm.close()
+    image_shm.unlink()  # Unlink the shared memory
+
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
