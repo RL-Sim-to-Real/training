@@ -69,13 +69,16 @@ warnings.filterwarnings("ignore", category=UserWarning, module="absl")
 
 from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision as randomize
 
+# save final policy params
+import pickle
+import shutil
 
 _ENV_NAME = flags.DEFINE_string(
     "env_name",
     "PandaPickCubeCartesianModified",
     f"Name of the environment. One of {', '.join(registry.ALL_ENVS)}",
 )
-_VISION = flags.DEFINE_boolean("vision", False, "Use vision input")
+_VISION = flags.DEFINE_boolean("vision", True, "Use vision input")
 _LOAD_CHECKPOINT_PATH = flags.DEFINE_string(
     "load_checkpoint_path", None, "Path to load checkpoint from"
 )
@@ -185,15 +188,14 @@ _PROPRIOCEPTION = flags.DEFINE_boolean(
     "Whether to include proprioception in the observation space.",
 )
 
-
-
-
+_DEVICE_ID = flags.DEFINE_integer("device_id", 0, "ID of the GPU device to use.")
 
 def main(argv):
   """Run training and evaluation for the specified environment."""
 
   del argv
-
+  os.environ["CUDA_VISIBLE_DEVICES"] = str(_DEVICE_ID.value)
+  print("JAX devices:", jax.devices())
   env_name = _ENV_NAME.value
   env_cfg = manipulation.get_default_config(env_name)
 
@@ -262,18 +264,19 @@ def main(argv):
   print(f"PPO Training Parameters:\n{ppo_params}")
 
   # Generate unique experiment name
-  now = datetime.now()
-  timestamp = now.strftime("%Y%m%d-%H%M%S")
+
   exp_name = f"{env_name}-{_ACTION_SPACE.value}-{_ACTUATOR.value}"
   if _PROPRIOCEPTION.value:
     exp_name += "-_prop"
-  exp_name += f"-{timestamp}"
+  exp_name += f"-seed-{_SEED.value}"
   if _SUFFIX.value is not None:
     exp_name += f"-{_SUFFIX.value}"
   print(f"Experiment name: {exp_name}")
 
   # Set up logging directory
   logdir = epath.Path("logs").resolve() / exp_name
+  if logdir.exists():
+    shutil.rmtree(logdir)
   logdir.mkdir(parents=True, exist_ok=True)
   print(f"Logs are being stored in: {logdir}")
 
@@ -359,9 +362,12 @@ def main(argv):
   # Train or load the model
   make_inference_fn, params, metrics = train_fn(environment=env)
 
-  # save final policy params
-  import pickle
-  with open(logdir / f"params_general_{_ACTION_SPACE.value}-{_ACTUATOR.value}_img_aug.pkl", "wb") as f:
+
+  filename = f"params_general_{_ACTION_SPACE.value}-{_ACTUATOR.value}"
+  if _PROPRIOCEPTION.value:
+    filename += "_prop"
+  filename += ".pkl"
+  with open(logdir / filename, "wb") as f:
     pickle.dump(params, f)
   print("Done training.")
 
