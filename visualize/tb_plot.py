@@ -122,6 +122,7 @@ def plot_groups(
     bin_count: int,
     min_bin_count: int,
     title: str,
+    suffix: str,
     single_figure: bool,
 ):
     os.makedirs(out_dir, exist_ok=True)
@@ -138,7 +139,7 @@ def plot_groups(
                 steps, wall, vals = load_scalars(rd, tag)
                 if steps is None:
                     continue
-                x = steps if xaxis == "steps" else wall
+                x = steps if xaxis == "env steps" else wall
                 y = vals
                 per_run_xy.append((np.asarray(x, dtype=float), np.asarray(y, dtype=float)))
 
@@ -196,8 +197,8 @@ def plot_groups(
             plt.legend(frameon=False)
             plt.tight_layout()
             base = os.path.join(out_dir, sanitize(tag))
-            plt.savefig(base + ".png", dpi=300)
-            plt.savefig(base + ".pdf")
+            plt.savefig(base + f"{suffix}.png", dpi=300)
+            plt.savefig(base + f"{suffix}.pdf")
             plt.close()
 
             # CSV export
@@ -230,8 +231,8 @@ def plot_groups(
         plt.legend(legend_entries, frameon=False)
         plt.tight_layout()
         base = os.path.join(out_dir, sanitize("overlay_" + "_".join(tag_list)))
-        plt.savefig(base + ".png", dpi=300)
-        plt.savefig(base + ".pdf")
+        plt.savefig(base + f"{suffix}.png", dpi=300)
+        plt.savefig(base + f"{suffix}.pdf")
         plt.close()
 
 
@@ -244,7 +245,7 @@ def main():
     ap.add_argument("--groups", default="", help="Pattern groups, e.g., 'PPO=**/ppo_seed*;SAC=**/sac_seed*'")
     ap.add_argument("--group_by_regex", default="",
         help="Regex that captures a group name from the run leaf dir (group 1). e.g., '^(.*?)-seed\\d+$'")
-    ap.add_argument("--xaxis", choices=["steps", "wall_time"], default="steps")
+    ap.add_argument("--xaxis", choices=["env steps", "wall_time"], default="env steps")
     ap.add_argument("--yaxis", default="", help="y-axis label")
 
     ap.add_argument("--bin_count", type=int, default=200, help="Number of bins over the common x-range.")
@@ -258,6 +259,7 @@ def main():
         help="Plot all tags on the same axis in a single figure.")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--title", default="", help="Optional title for the plot.")
+    ap.add_argument("--suffix", default="", help="(Ignored)")
 
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -291,6 +293,7 @@ def main():
         min_bin_count=args.min_bin_count,
         title=args.title or ", ".join(tag_list),
         single_figure=args.combine_tags,
+        suffix=args.suffix,
     )
     print(f"Done. Figures saved to: {os.path.abspath(args.out)}")
 
