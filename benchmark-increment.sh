@@ -3,7 +3,7 @@
 ENV_NAME="PandaPickCubeCartesianModified"
 NUM_TIMESTEPS=50_000_000
 SEEDS=(1 2 3 4 5)
-DEVICE_ID = 0
+DEVICE_ID=0
 
 # Only include compatible pairs here:
 
