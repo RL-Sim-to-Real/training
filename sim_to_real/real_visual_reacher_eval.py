@@ -29,8 +29,13 @@ from PIL import Image
 from brax.training import types
 import time
 
-
+import json
 from multiprocessing import shared_memory, Process, set_start_method
+import threading
+import pyrealsense2 as rs
+
+from franka_real.FrankaPickCubeCartesian import FrankaPickCubeCartesian
+from franka_real.FrankaEvalAutomator import FrankaEvalAutomator
 
 try:
     set_start_method('spawn')  # Use 'spawn' to avoid issues with JAX and multiprocessing
@@ -40,7 +45,8 @@ except RuntimeError:
 
 
 
-
+depth_frame, color_frame = None, None
+lock = threading.Lock()
 
 def agent_process(action_name, action_shape, action_dtype, 
                   image_name, image_shape, image_dtype):
@@ -106,12 +112,16 @@ def agent_process(action_name, action_shape, action_dtype,
 def camera_process(image_name, image_shape, image_dtype):
     from camera import Camera
     camera = Camera(cam_index=4)
+    # FIXME: set the frame dimensions to be square to match training
     image_shm = shared_memory.SharedMemory(name=image_name)
     img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
     while True:
         start_time = time.time()
         img = camera.capture_img()
         end_time = time.time()
+        # h, w = img.shape[:2]
+        # crop_x = 50 #(w - h) // 2
+        # img = img[:, crop_x:(w - crop_x)]  # Crop to square
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
         img = cv2.resize(img, (64, 64)) 
@@ -121,7 +131,121 @@ def camera_process(image_name, image_shape, image_dtype):
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-def run_trial(action_array, env):
+def rs_camera_process(image_name, image_shape, image_dtype, pipeline, align):
+    image_shm = shared_memory.SharedMemory(name=image_name)
+    img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
+    while True:
+        # FIXME: put this in a thread in the main process so that frame objects are available in the main process
+        # Get frames
+        frames = pipeline.wait_for_frames()
+        frames = align.process(frames)
+        color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()
+        if not color_frame or not depth_frame:
+            time.sleep(0.001)
+            continue
+
+        img = np.asanyarray(color_frame.get_data())
+        # img = np.asanyarray(depth_frame.get_data())
+        # img = cv2.convertScaleAbs(img, alpha=0.10)
+        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
+
+        cv2.imshow("Captured Image", img)
+        cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
+        img = cv2.resize(img, (64, 64)) 
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
+        img_array[:] = img  # Copy the image to shared memory
+        # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+def rs_camera_thread(img_array):
+    global depth_frame, color_frame, lock
+    # image_shm = shared_memory.SharedMemory(name=image_name)
+    # img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
+    pipeline = rs.pipeline()
+    config = rs.config()
+    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+    pipeline.start(config)
+    align = rs.align(rs.stream.color)
+    while True:
+        frames = pipeline.wait_for_frames()
+        frames = align.process(frames)
+        cf = frames.get_color_frame().keep()
+        df = frames.get_depth_frame().keep()
+        if not color_frame or not depth_frame:
+            time.sleep(0.001)
+            continue
+
+        with lock:
+            color_frame = cf
+            depth_frame = df
+
+        img = np.asanyarray(color_frame.get_data())
+        # img = np.asanyarray(depth_frame.get_data())
+        # img = cv2.convertScaleAbs(img, alpha=0.10)
+        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
+
+        cv2.imshow("Captured Image", img)
+        print("Showing image")
+        cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
+        img = cv2.resize(img, (64, 64)) 
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
+        img_array[:] = img  # Copy the image to shared memory
+        # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+def make_homog(Rmat, tvec):
+    T = np.eye(4)
+    T[:3, :3] = Rmat
+    T[:3, 3] = tvec.flatten()
+    return T
+
+def get_point_base(point_cam, env):
+    # Get robot pose
+    ee_pose = env.robot.endpoint_pose()  # has .translation and .quaternion
+    ee_quaternion = [ee_pose['orientation'].w, ee_pose['orientation'].x,
+                        ee_pose['orientation'].y, ee_pose['orientation'].z]
+    # R_ee = R.from_quat(ee_pose.quaternion).as_matrix()
+    R_ee = env.matrix_from_quaternion(ee_quaternion)
+    T_base_ee = make_homog(R_ee, ee_pose['position'])
+    # print('ee_pose:', ee_pose['position'], env.euler_from_quaternion(ee_quaternion))
+    T_ee_camera_file = os.path.expanduser("~/Desktop/ICRA2026/Franka-Real/franka_real/T_ee_camera.json")
+    with open(T_ee_camera_file, "r") as f:
+        T_ee_camera = np.array(json.load(f))
+    T_base_camera = T_base_ee @ T_ee_camera
+    # print('camera position:', T_base_camera[:3, 3])
+    # T_base_camera = T_base_ee @ np.linalg.inv(T_ee_camera)
+    # T_base_camera = np.linalg.inv(T_base_ee @ np.linalg.inv(T_ee_camera))
+    # T_base_camera = T_ee_camera @ T_base_ee
+    # T_base_camera = np.linalg.inv(T_ee_camera @ T_base_ee)
+    point_cam_homog = np.array([point_cam[0], point_cam[1], point_cam[2], 1.0])
+    # point_cam_homog = np.array([point_cam[1], -point_cam[0], -point_cam[2], 1.0])
+    # point_ee = np.linalg.inv(T_ee_camera) @ point_cam_homog
+    point_ee = T_ee_camera @ point_cam_homog
+    point_base = T_base_camera @ point_cam_homog
+    return point_base, point_ee
+
+def run_trial(action_name, action_shape, action_dtype, point_cam_name, point_cam_shape, point_cam_dtype):
+    action_shm = shared_memory.SharedMemory(name=action_name)
+    action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
+    env = FrankaPickCubeCartesian(camera_index=0)
+
+    # reset the cube position
+    point_cam_shm = shared_memory.SharedMemory(name=point_cam_name)
+    print(point_cam_name, point_cam_shape, point_cam_dtype)
+    point_cam_array = np.ndarray(point_cam_shape, dtype=point_cam_dtype, buffer=point_cam_shm.buf)
+    print("Resetting cube position...")
+    while True:
+        point_cam = point_cam_array.copy()
+        point_base, point_ee = get_point_base(point_cam, env)
+        print(f"Cube position (x, y, z) in robot base frame: {point_base}")
+        # print(f"Cube position (x, y, z) in end effector frame: {point_ee}")
+        # print(f"Cube position (x, y, z) in camera frame: {point_cam}")
+        time.sleep(1)
+
     trial_length = 300
     success = False
     grasped = False
@@ -146,7 +270,7 @@ def run_trial(action_array, env):
             time.sleep(0.25)  # Wait for the gripper to open
             grasped = False
 
-        target_x_y_z = 0.02 * action[:3] + ee_pos
+        target_x_y_z = 0.04 * action[:3] + ee_pos
         target_x_y_z = jp.array([target_x_y_z[0], \
                                  jp.clip(target_x_y_z[1], -0.4, 0.4), \
                                  jp.clip(target_x_y_z[2], 0.035, 0.2)]) # for safety
@@ -169,12 +293,23 @@ def run_trial(action_array, env):
     target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.04])  # Keep x, y the same and set z to 0.02
     env.step(target_x_y_z)
     env.open_gripper()
+    env.reset()
+    env.close()
 
     return success
 
+def prepare_realsense(fps):
+    pipeline = rs.pipeline()
+    config = rs.config()
+    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, fps)
+    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, fps)
+    pipeline.start(config)
+    align = rs.align(rs.stream.color)
+    return pipeline, align
+
 def main():
-    from franka_real.FrankaPickCubeCartesian import FrankaPickCubeCartesian
-    env = FrankaPickCubeCartesian(camera_index=0)
+    # env = FrankaPickCubeCartesian(camera_index=0)
+    eval_automator = FrankaEvalAutomator()
 
     dummy_img = np.zeros((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
 
@@ -183,22 +318,74 @@ def main():
     action_array = np.ndarray(buffer=action_shm.buf, dtype=np.float32, shape=action.shape)
     image_shm = shared_memory.SharedMemory(create=True, size=dummy_img.nbytes)
     image_array = np.ndarray(buffer=image_shm.buf, dtype=np.uint8, shape=dummy_img.shape)
+    point_cam = np.zeros(4, dtype=np.float32)
+    point_cam_shm = shared_memory.SharedMemory(create=True, size=point_cam.nbytes)
+    point_cam_array = np.ndarray(buffer=point_cam_shm.buf, dtype=np.float32, shape=point_cam.shape)
     action_array[:] = action  # Copy the initial action to shared memory
     p = Process(target=agent_process, args=(action_shm.name, action.shape, action.dtype,
                                                image_shm.name, dummy_img.shape, dummy_img.dtype))
-    c = Process(target=camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype))
-    c.start()  # Start the camera process
+    # c = Process(target=camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype))
+    # c = Process(target=rs_camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype, pipeline, align))
+    # c = threading.Thread(target=rs_camera_thread, args=(image_array,), daemon=True)
+    # c.start()  # Start the camera process
     p.start()
-    input("Press Enter to start the control loop...")
-    results = []
-    for _ in range(2):
-        result = run_trial(action_array, env)
-        results.append(result)
+    # input("Press Enter to start the control loop...")
 
-    env.reset()
-    env.close()
+    # main loop
+    fps = 60
+    pipeline, align = prepare_realsense(fps)
+    n_trials, max_trials, trial_process = 0, 2, None
+    while True:
+        t0 = time.time()
+        frames = pipeline.wait_for_frames()
+        frames = align.process(frames)
+        color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()
+        if not color_frame or not depth_frame:
+            time.sleep(0.001)
+            continue
+
+        img = np.asanyarray(color_frame.get_data())
+        # img = np.asanyarray(depth_frame.get_data())
+        # img = cv2.convertScaleAbs(img, alpha=0.10)
+        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
+
+        cv2.imshow("Captured Image", img)
+        cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
+        img = cv2.resize(img, (64, 64)) 
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
+        image_array[:] = img  # Copy the image to shared memory
+        # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+        latest_point_cam = eval_automator.get_red_cube_position(depth_frame, color_frame)
+        if latest_point_cam is not None:
+            point_cam = latest_point_cam
+            point_cam_array[:] = point_cam
+        # print(f"Cube position (x, y, z) in camera frame: {point_cam}")
+        if n_trials < max_trials and (trial_process is None or not trial_process.is_alive()):
+            n_trials += 1
+            print(point_cam_shm.name, point_cam.shape, point_cam.dtype, point_cam.dtype, point_cam_array.dtype)
+            trial_process = Process(target=run_trial, args=(action_shm.name, action.shape, action.dtype,
+                                                            point_cam_shm.name, point_cam.shape, point_cam.dtype))
+            trial_process.start()
+
+        time.sleep(max(1./fps - (time.time() - t0), 0))
+
+    if trial_process is not None:
+        trial_process.join()
+
+    # results = []
+    # for _ in range(2):
+    #     # eval_automator.reset_cube()
+    #     result = run_trial(action_array, env)
+    #     results.append(result)
+
+    # env.reset()
+    # env.close()
     p.join()  # Wait for the agent process to finish
-    c.join()  
+    # c.join()  
     action_shm.close()
     action_shm.unlink()  # Unlink the shared memory
     image_shm.close()
