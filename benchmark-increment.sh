@@ -19,8 +19,7 @@ for pair in "${PAIRS[@]}"; do
   action="$2"
   # Perform process cleanup
   echo "Cleaning up processes before next run..."
-  pkill -f train_pick_cube_ppo.py || true
-
+  
   # With proprioception
   for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"
@@ -37,13 +36,8 @@ for pair in "${PAIRS[@]}"; do
       --log_training_metrics \
       --vision \
       --proprioception \
-      --device_id=$DEVICE_ID
+      --device_id="$DEVICE_ID"
 
-  done
-
-  # Without proprioception
-  for seed in "${SEEDS[@]}"; do
-    echo "Running actuator=$actuator action=$action seed=$seed"
     
     # MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
     # MADRONA_BVH_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache \
@@ -56,7 +50,8 @@ for pair in "${PAIRS[@]}"; do
       --use_tb \
       --log_training_metrics \
       --vision \
-      --device_id=$DEVICE_ID
+      --device_id="$DEVICE_ID"
+
 
   done
 
