@@ -194,6 +194,7 @@ def main(argv):
   """Run training and evaluation for the specified environment."""
 
   del argv
+  print("DEVICE ID:", _DEVICE_ID.value)
   os.environ["CUDA_VISIBLE_DEVICES"] = str(_DEVICE_ID.value)
   print("JAX devices:", jax.devices())
   env_name = _ENV_NAME.value

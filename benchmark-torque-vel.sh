@@ -8,8 +8,8 @@ DEVICE_ID=1
 # Only include compatible pairs here:
 
 PAIRS=(
-  "velocity joint"
   "torque joint"
+  "velocity joint"
 )
 
 
@@ -19,7 +19,6 @@ for pair in "${PAIRS[@]}"; do
   action="$2"
   # Perform process cleanup
   echo "Cleaning up processes before next run..."
-  pkill -f train_pick_cube_ppo.py || true
 
   # With prioception
   for seed in "${SEEDS[@]}"; do
@@ -36,16 +35,11 @@ for pair in "${PAIRS[@]}"; do
       --use_tb \
       --log_training_metrics \
       --vision \
-      $( [[ "$actuator" == "torque" ]] && echo "--action_scale=0.5 \\" || echo "--action_scale=1.0 \\" )\
       --proprioception \
-      --device_id=$DEVICE_ID
+      --device_id=1 \
+      $( [[ "$actuator" == "torque" ]] && echo "--action_scale=0.5 \\" || echo "--action_scale=1.0 \\" )
 
-  done
 
-  # Without proprioception
-  for seed in "${SEEDS[@]}"; do
-    echo "Running actuator=$actuator action=$action seed=$seed"
-    
     # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
     # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
     python train_pick_cube_ppo.py \
@@ -57,10 +51,11 @@ for pair in "${PAIRS[@]}"; do
       --use_tb \
       --log_training_metrics \
       --vision \
+      --device_id=1 \
       $( [[ "$actuator" == "torque" ]] && echo "--action_scale=0.5 \\" || echo "--action_scale=1.0 \\" )\
-      --device_id=$DEVICE_ID
 
   done
+
 
 
   # Pause before the next run to cool-down GPU
