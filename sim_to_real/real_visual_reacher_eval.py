@@ -203,6 +203,48 @@ def make_homog(Rmat, tvec):
     T[:3, 3] = tvec.flatten()
     return T
 
+def get_birds_eye_view(point_cam_array, env):
+    # move the robot above the cube
+    # height of 30cm or more works good
+    for _ in range(5):
+        point_base, point_ee = get_point_base(point_cam_array.copy(), env)
+        angle = point_cam_array[4]
+        angle_180 = point_cam_array[5]
+        is_square = point_cam_array[6]
+        print(f"Cube position (x, y, z) in robot base frame: {point_base}")
+        pose_ee = point_base[:3].copy()
+        pose_ee[2] = 0.3
+        env.move_to_pose_ee(pose_ee)
+        # time.sleep(1)
+    return angle, angle_180, is_square, pose_ee
+
+def make_cube_upright(env, pose_ee, angle, angle_180):
+    grasp_height = 0.04
+    grasp_offset = 0 # degrees
+    ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
+    cube_ee_angle = ee_angle.copy()
+    # cube_ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
+    cube_ee_angle[2] += -(angle_180 - 90) * np.pi / 180.0
+    cube_ee_angle[1] -= grasp_offset * np.pi / 180.
+    env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
+    pose_ee[2] = grasp_height
+    # pose_ee[0] += 0.015 # offset to be above the cube center
+    env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
+    env.grasp_object()
+    pose_ee[2] = 0.3
+    env.move_to_pose_ee(pose_ee)
+    # randomize the cube position
+    cube_pos = np.array([0.48, 0.0, grasp_height + 0.04])
+    rotated_ee_angle = ee_angle.copy()
+    rotated_ee_angle[1] += (90 - 10 - grasp_offset) * np.pi / 180.
+    env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
+    cube_pos[2] = grasp_height + 0.01
+    env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
+    env.open_gripper()
+    pose_ee[:2] = cube_pos[:2]
+    pose_ee[2] = 0.2
+    env.move_to_pose_ee(pose_ee)
+
 def get_point_base(point_cam, env):
     # Get robot pose
     ee_pose = env.robot.endpoint_pose()  # has .translation and .quaternion
@@ -231,20 +273,59 @@ def get_point_base(point_cam, env):
 def run_trial(action_name, action_shape, action_dtype, point_cam_name, point_cam_shape, point_cam_dtype):
     action_shm = shared_memory.SharedMemory(name=action_name)
     action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
-    env = FrankaPickCubeCartesian(camera_index=0)
+    env = FrankaPickCubeCartesian(camera_index=0) #, dt=0.004)
 
     # reset the cube position
     point_cam_shm = shared_memory.SharedMemory(name=point_cam_name)
     print(point_cam_name, point_cam_shape, point_cam_dtype)
     point_cam_array = np.ndarray(point_cam_shape, dtype=point_cam_dtype, buffer=point_cam_shm.buf)
+
+    # reset the robot joints to initial position
+    target_joints = np.array([-0.01266706, 0.23113158, 0.01397337, -2.11847885, -0.00837887, 2.33090511, 0.80890272])
+    env.move_to_joint_positions(target_joints)
+
     print("Resetting cube position...")
+    env.open_gripper()
     while True:
-        point_cam = point_cam_array.copy()
-        point_base, point_ee = get_point_base(point_cam, env)
-        print(f"Cube position (x, y, z) in robot base frame: {point_base}")
-        # print(f"Cube position (x, y, z) in end effector frame: {point_ee}")
-        # print(f"Cube position (x, y, z) in camera frame: {point_cam}")
-        time.sleep(1)
+        angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
+        while is_square < 0.5:
+            print("Cube is knocked over")
+            make_cube_upright(env, pose_ee, angle, angle_180)
+            env.move_to_joint_positions(target_joints)
+            env.apply_joint_vel(np.zeros((7,)))
+            angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
+
+        ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
+        ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
+        grasp_height = 0.065
+        pose_ee[2] = grasp_height
+        pose_ee[0] += 0.015 # offset to be above the cube center
+        env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle)
+        env.grasp_object()
+        # time.sleep(0.25)
+        pose_ee[2] = 0.3
+        env.move_to_pose_ee(pose_ee)
+        # time.sleep(1)
+        # randomize the cube position
+        cube_pos = np.array([np.random.uniform(0.565, 0.595), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
+        # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
+        print(f"Moving cube to new position: {cube_pos[:2]}")
+        env.move_to_pose_ee(cube_pos)
+        cube_pos[2] = grasp_height + 0.0005
+        env.move_to_pose_ee(cube_pos)
+        # time.sleep(1)
+        env.open_gripper()
+        # time.sleep(0.25)
+        pose_ee[:2] = cube_pos[:2]
+        pose_ee[2] = 0.2
+        env.move_to_pose_ee(pose_ee)
+        # time.sleep(1)
+
+        # reset the robot joints to initial position again
+        env.move_to_joint_positions(target_joints)
+        env.apply_joint_vel(np.zeros((7,)))
+        # time.sleep(1)
+        # return
 
     trial_length = 300
     success = False
@@ -318,7 +399,7 @@ def main():
     action_array = np.ndarray(buffer=action_shm.buf, dtype=np.float32, shape=action.shape)
     image_shm = shared_memory.SharedMemory(create=True, size=dummy_img.nbytes)
     image_array = np.ndarray(buffer=image_shm.buf, dtype=np.uint8, shape=dummy_img.shape)
-    point_cam = np.zeros(4, dtype=np.float32)
+    point_cam = np.zeros(7, dtype=np.float32)
     point_cam_shm = shared_memory.SharedMemory(create=True, size=point_cam.nbytes)
     point_cam_array = np.ndarray(buffer=point_cam_shm.buf, dtype=np.float32, shape=point_cam.shape)
     action_array[:] = action  # Copy the initial action to shared memory
@@ -334,7 +415,7 @@ def main():
     # main loop
     fps = 60
     pipeline, align = prepare_realsense(fps)
-    n_trials, max_trials, trial_process = 0, 2, None
+    n_trials, max_trials, trial_process = 0, 1, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
