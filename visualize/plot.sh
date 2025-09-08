@@ -62,3 +62,19 @@ Img (Velocity)=**/PandaPickCubeCartesianModified-joint-velocity-seed*;
 Img (Position Increment)=**/PandaPickCubeCartesianModified-joint_increment-position-seed*;
 Img (Torque)=**/PandaPickCubeCartesianModified-joint-torque-seed*"   --bin_count 200
 
+
+# Jerk
+python tb_plot.py   --logdir ../logs --title "Episodic Jerk" --yaxis "Jerk"  --out figs_pub/img_prioception   --tags "episode/jerk"   --groups "\
+Img+Prioception (Cartesian Increment)=**/PandaPickCubeCartesianModified-cartesian_increment-position-_prop-*;
+Img+Prioception (Velocity)=**/PandaPickCubeCartesianModified-joint-velocity-_prop-*;
+Img+Prioception (Position Increment)=**/PandaPickCubeCartesianModified-joint_increment-position-_prop-*;
+Img+Prioception (Torque)=**/PandaPickCubeCartesianModified-joint-torque-_prop-*"\
+   --bin_count 200 --verbose --suffix "_prioception"
+
+
+python tb_plot.py   --logdir ../logs --title "Episodic Jerk" --yaxis "Jerk"  --out figs_pub/img   --tags "episode/jerk"   --groups "\
+Img (Cartesian Increment)=**/PandaPickCubeCartesianModified-cartesian_increment-position-seed*;
+Img (Velocity)=**/PandaPickCubeCartesianModified-joint-velocity-seed*;
+Img (Position Increment)=**/PandaPickCubeCartesianModified-joint_increment-position-seed*;
+Img (Torque)=**/PandaPickCubeCartesianModified-joint-torque-seed*"   --bin_count 200
+

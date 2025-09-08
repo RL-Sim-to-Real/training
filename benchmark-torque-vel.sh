@@ -2,14 +2,14 @@
 
 ENV_NAME="PandaPickCubeCartesianModified"
 NUM_TIMESTEPS=50_000_000
-SEEDS=(1 2 3 4 5)
+SEEDS=(1 2)
 DEVICE_ID=1
 
 # Only include compatible pairs here:
 
 PAIRS=(
+  # "velocity joint"
   "torque joint"
-  "velocity joint"
 )
 
 
@@ -37,7 +37,7 @@ for pair in "${PAIRS[@]}"; do
       --vision \
       --proprioception \
       --device_id=1 \
-      $( [[ "$actuator" == "torque" ]] && echo "--action_scale=0.5 \\" || echo "--action_scale=1.0 \\" )
+      --action_scale=1.0 
 
 
     # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
@@ -52,7 +52,7 @@ for pair in "${PAIRS[@]}"; do
       --log_training_metrics \
       --vision \
       --device_id=1 \
-      $( [[ "$actuator" == "torque" ]] && echo "--action_scale=0.5 \\" || echo "--action_scale=1.0 \\" )\
+      --action_scale=1.0 
 
   done
 

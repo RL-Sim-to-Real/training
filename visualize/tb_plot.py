@@ -19,6 +19,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
+# Configure matplotlib fonts
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.size'] = 14
+plt.rcParams['axes.labelsize'] = 16
+plt.rcParams['xtick.labelsize'] = 14
+plt.rcParams['ytick.labelsize'] = 14
+plt.rcParams['legend.fontsize'] = 12
+
 
 # ---------- Utilities ----------
 def sanitize(name: str) -> str:
@@ -42,6 +50,11 @@ def load_scalars(run_dir: str, tag: str):
     steps = np.array([e.step for e in events], dtype=float)
     wall = np.array([e.wall_time for e in events], dtype=float)
     vals = np.array([e.value for e in events], dtype=float)
+    
+    # Set first value of 'episode/success' tag to 0
+    if tag == 'episode/success' and len(vals) > 0:
+        vals[0] = 0.0
+    
     return steps, wall, vals
 
 
