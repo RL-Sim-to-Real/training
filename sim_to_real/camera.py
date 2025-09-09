@@ -13,8 +13,6 @@ class Camera():
         if not ret:
             raise RuntimeError("Failed to capture image from camera.")
 
-        # frame = cv2.resize(frame, (64, 64))
-        # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) 
         return frame
 
 

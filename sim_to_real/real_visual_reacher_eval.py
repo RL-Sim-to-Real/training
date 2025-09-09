@@ -29,6 +29,15 @@ from PIL import Image
 from brax.training import types
 import time
 
+from brax.training.agents.ppo import networks_vision as ppo_networks_vision
+from brax.training.agents.ppo import train as ppo
+from mujoco_playground import manipulation
+from mujoco_playground import wrapper
+from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision as randomize
+from mujoco_playground.config import manipulation_params
+from get_policy_network import make_inference_fn #TODO: Figure this out
+import pickle
+
 import json
 from multiprocessing import shared_memory, Process, set_start_method
 import threading
@@ -48,17 +57,71 @@ except RuntimeError:
 depth_frame, color_frame = None, None
 lock = threading.Lock()
 
+class Agent():
+    def __init__(self, action_name, action_shape, action_dtype, image_name, image_shape, image_dtype):
+        np.set_printoptions(precision=3, suppress=True, linewidth=100)
+    
+        env_name = "PandaPickCubeCartesianModified"
+    
+        # Rasterizer is less feature-complete than ray-tracing backend but stable
+        layer_size = 256
+    
+    
+        network_factory = functools.partial(
+            ppo_networks_vision.make_ppo_networks_vision,
+            policy_hidden_layer_sizes=[layer_size, layer_size],
+            value_hidden_layer_sizes= [layer_size, layer_size],
+            # activation=linen.relu, # only works with default activation right now
+            normalise_channels=True,
+        )
+    
+        ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
+    
+        del ppo_params.network_factory
+        ppo_params.network_factory = network_factory
+    
+    
+        # Load the params object from the pickle file
+        # policy_fn = "policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl"
+        # policy_fn = "test_policies/params_general_cartesian_increment-position.pkl"
+        policy_fn = "test_policies/params_general_joint_increment-position.pkl"
+        # policy_fn = "test_policies/params_general_joint-velocity.pkl"
+        # policy_fn = "test_policies/params_general_cartesian_increment-position_prop.pkl"
+        # policy_fn = "test_policies/params_general_joint_increment-position_prop.pkl"
+        # policy_fn = "test_policies/params_general_joint-velocity_prop.pkl"
+        with open(policy_fn, "rb") as f:
+            params = pickle.load(f)
+    
+        self.use_prop = 'prop' in policy_fn
+        self.action_shape = (4,) if 'cartesian' in policy_fn else (7,)
+        inference_fn = make_inference_fn(network_factory=network_factory, include_prop=self.use_prop)
+    
+        self.jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
+        self.action_shm = shared_memory.SharedMemory(name=action_name)
+        self.action_array = np.ndarray(self.action_shape, dtype=action_dtype, buffer=self.action_shm.buf)
+        self.image_shm = shared_memory.SharedMemory(name=image_name)
+        self.img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=self.image_shm.buf)
+        self.key = jax.random.PRNGKey(0)
+
+    def get_action(self, proprioception=None):
+        self.key, _ = jax.random.split(self.key)
+        obs = {'pixels/view_0': self.img_array.copy()}
+        if self.use_prop:
+            obs['_prop'] = proprioception
+        t0 = time.time()
+        action, _ = self.jit_inference_fn(obs, self.key) # empirical inference time is 0.016
+        print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
+        # self.action_array[:] = action
+        return action
+
+    def __del__(self):
+        self.action_shm.close()
+        self.action_shm.unlink()
+        self.image_shm.close()
+        self.image_shm.unlink()
+
 def agent_process(action_name, action_shape, action_dtype, 
                   image_name, image_shape, image_dtype):
-    from brax.training.agents.ppo import networks_vision as ppo_networks_vision
-    from brax.training.agents.ppo import train as ppo
-    from mujoco_playground import manipulation
-    from mujoco_playground import wrapper
-    from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision as randomize
-    from mujoco_playground.config import manipulation_params
-    from get_policy_network import make_inference_fn #TODO: Figure this out
-    import pickle
-
     np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
     env_name = "PandaPickCubeCartesianModified"
@@ -82,10 +145,13 @@ def agent_process(action_name, action_shape, action_dtype,
 
 
     # Load the params object from the pickle file
-    with open("policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl", "rb") as f:
+    # policy_fn = "policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl"
+    # policy_fn = "test_policies/params_general_cartesian_increment-position.pkl"
+    policy_fn = "test_policies/params_general_cartesian_increment-position_prop.pkl"
+    with open(policy_fn, "rb") as f:
         params = pickle.load(f)
 
-    inference_fn = make_inference_fn(network_factory=network_factory)
+    inference_fn = make_inference_fn(network_factory=network_factory, include_prop='prop' in policy_fn)
 
     jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
     action_shm = shared_memory.SharedMemory(name=action_name)
@@ -96,11 +162,13 @@ def agent_process(action_name, action_shape, action_dtype,
     try:
         while True:
             key, _ = jax.random.split(key)
-            # start = time.time()
-            action, _ = jit_inference_fn({'pixels/view_0': img_array.copy()}, key) # imperical inference time is 0.016
+            obs = {'pixels/view_0': img_array.copy()}
+            if 'prop' in policy_fn:
+                obs['_prop'] = np.array([0.0]*19, dtype=np.float32)
+            t0 = time.time()
+            action, _ = jit_inference_fn(obs, key) # imperical inference time is 0.016
+            print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
             # print(f"Action: {action}")
-            # end = time.time()
-            # print("Inference time:", end - start)
             time.sleep(0.25) # set the cycle time to 40 ms
             action_array[:] = action
     except KeyboardInterrupt:
@@ -245,6 +313,34 @@ def make_cube_upright(env, pose_ee, angle, angle_180):
     pose_ee[2] = 0.2
     env.move_to_pose_ee(pose_ee)
 
+def put_cube_on_white_strip(env, angle, pose_ee):
+    ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
+    ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
+    grasp_height = 0.065
+    pose_ee[2] = grasp_height
+    pose_ee[0] += 0.015 # offset to be above the cube center
+    env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle)
+    env.grasp_object()
+    # time.sleep(0.25)
+    pose_ee[2] = 0.3
+    env.move_to_pose_ee(pose_ee)
+    # time.sleep(1)
+    # randomize the cube position
+    cube_pos = np.array([np.random.uniform(0.565, 0.595), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
+    # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
+    print(f"Moving cube to new position: {cube_pos[:2]}")
+    env.move_to_pose_ee(cube_pos)
+    cube_pos[2] = grasp_height + 0.0005
+    env.move_to_pose_ee(cube_pos)
+    # time.sleep(1)
+    env.open_gripper()
+    # time.sleep(0.25)
+    pose_ee[:2] = cube_pos[:2]
+    pose_ee[2] = 0.2
+    env.move_to_pose_ee(pose_ee)
+    # time.sleep(1)
+
+
 def get_point_base(point_cam, env):
     # Get robot pose
     ee_pose = env.robot.endpoint_pose()  # has .translation and .quaternion
@@ -270,110 +366,99 @@ def get_point_base(point_cam, env):
     point_base = T_base_camera @ point_cam_homog
     return point_base, point_ee
 
-def run_trial(action_name, action_shape, action_dtype, point_cam_name, point_cam_shape, point_cam_dtype):
+def reset_cube_position(point_cam_array, env, target_joints):
+    angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
+    while is_square < 0.5:
+        print("Cube is knocked over")
+        make_cube_upright(env, pose_ee, angle, angle_180)
+        env.move_to_joint_positions(target_joints)
+        env.apply_joint_vel(np.zeros((7,)))
+        angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
+
+    put_cube_on_white_strip(env, angle, pose_ee)
+
+def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_name, point_cam_shape, point_cam_dtype, image_name, image_shape, image_dtype):
     action_shm = shared_memory.SharedMemory(name=action_name)
     action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
     env = FrankaPickCubeCartesian(camera_index=0) #, dt=0.004)
+    agent = Agent(action_name, action_shape, action_dtype, image_name, image_shape, image_dtype)
 
     # reset the cube position
     point_cam_shm = shared_memory.SharedMemory(name=point_cam_name)
-    print(point_cam_name, point_cam_shape, point_cam_dtype)
     point_cam_array = np.ndarray(point_cam_shape, dtype=point_cam_dtype, buffer=point_cam_shm.buf)
 
     # reset the robot joints to initial position
     target_joints = np.array([-0.01266706, 0.23113158, 0.01397337, -2.11847885, -0.00837887, 2.33090511, 0.80890272])
     env.move_to_joint_positions(target_joints)
 
-    print("Resetting cube position...")
-    env.open_gripper()
-    while True:
-        angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
-        while is_square < 0.5:
-            print("Cube is knocked over")
-            make_cube_upright(env, pose_ee, angle, angle_180)
-            env.move_to_joint_positions(target_joints)
-            env.apply_joint_vel(np.zeros((7,)))
-            angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
-
-        ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
-        ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
-        grasp_height = 0.065
-        pose_ee[2] = grasp_height
-        pose_ee[0] += 0.015 # offset to be above the cube center
-        env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle)
-        env.grasp_object()
-        # time.sleep(0.25)
-        pose_ee[2] = 0.3
-        env.move_to_pose_ee(pose_ee)
-        # time.sleep(1)
-        # randomize the cube position
-        cube_pos = np.array([np.random.uniform(0.565, 0.595), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
-        # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
-        print(f"Moving cube to new position: {cube_pos[:2]}")
-        env.move_to_pose_ee(cube_pos)
-        cube_pos[2] = grasp_height + 0.0005
-        env.move_to_pose_ee(cube_pos)
-        # time.sleep(1)
+    trial_length = 60
+    for i in range(max_trials):
         env.open_gripper()
-        # time.sleep(0.25)
-        pose_ee[:2] = cube_pos[:2]
-        pose_ee[2] = 0.2
-        env.move_to_pose_ee(pose_ee)
-        # time.sleep(1)
+        env.move_to_joint_positions(target_joints)
+        env.apply_joint_vel(np.zeros((7,)))
+        reset_cube_position(point_cam_array, env, target_joints)
 
         # reset the robot joints to initial position again
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
-        # time.sleep(1)
-        # return
 
-    trial_length = 300
-    success = False
-    grasped = False
-    ee_pos,_ = env.reset()
-    t_start = time.time()
-    while True:
-        # Resize the image using PIL
-        action = action_array.copy()  # Copy the action from shared memory
-        # action_y_z = 0.05 * action[:2] # this is the increment
-        print(f"Action: {action}")
-        if (action[3] < -0.8 and not grasped): # grasp it only once
-            print("attempting grasp")
-            grasped = env.grasp_object()
-            time.sleep(0.25)  # Wait for the gripper to close
-        
-        # reopen gripper if grasp was unsuccessful
-        fingertip_width = env.get_fingertip_width()
-        if grasped and fingertip_width < 0.035:
-            print('unsuccessful grasp, opening gripper')
-            env.gripper.stop_action()
-            env.gripper.open()
-            time.sleep(0.25)  # Wait for the gripper to open
-            grasped = False
+        success = False
+        grasped = False
+        ee_pos,_ = env.reset()
+        t_start = time.time()
+        print("Resetting cube position...")
+        env.open_gripper()
+        action = np.zeros(agent.action_shape, dtype=np.float32)
+        while True:
+            # action = action_array.copy()  # Copy the action from shared memory
+            proprioception = None
+            if agent.use_prop:
+                obs = env.get_state()
+                # proprioception = np.concatenate([obs['joints'], obs['joint_vels'], action, np.array([float(grasped)])], axis=0).astype(np.float32)
+                proprioception = np.zeros((2,), dtype=np.float32)
+                print(f"Proprioception: {proprioception.shape}, {proprioception}")
+            action = agent.get_action(proprioception=proprioception)
+            # action_y_z = 0.05 * action[:2] # this is the increment
+            print(f"Action: {action}")
+            if (action[-1] < -0.8 and not grasped): # grasp it only once
+                print("attempting grasp")
+                grasped = env.grasp_object()
+                time.sleep(0.25)  # Wait for the gripper to close
+            
+            # reopen gripper if grasp was unsuccessful
+            fingertip_width = env.get_fingertip_width()
+            if grasped and fingertip_width < 0.035:
+                print('unsuccessful grasp, opening gripper')
+                env.gripper.stop_action()
+                env.gripper.open()
+                time.sleep(0.25)  # Wait for the gripper to open
+                grasped = False
 
-        target_x_y_z = 0.04 * action[:3] + ee_pos
-        target_x_y_z = jp.array([target_x_y_z[0], \
-                                 jp.clip(target_x_y_z[1], -0.4, 0.4), \
-                                 jp.clip(target_x_y_z[2], 0.035, 0.2)]) # for safety
-        start = time.time()
-        ee_pos = env.step(target_x_y_z)
-        print(f"Target position: {target_x_y_z}, Current position: {ee_pos}")
-        end = time.time()
-        print(f"Time taken for one step: {end - start:.3f} seconds")
+            target_x_y_z = 0.04 * action[:3] + ee_pos
+            target_x_y_z = jp.array([target_x_y_z[0], \
+                                    jp.clip(target_x_y_z[1], -0.4, 0.4), \
+                                    jp.clip(target_x_y_z[2], 0.035, 0.2)]) # for safety
+            start = time.time()
+            ee_pos = env.step(target_x_y_z)
+            print(f"Target position: {target_x_y_z}, Current position: {ee_pos}")
+            end = time.time()
+            print(f"Time taken for one step: {end - start:.3f} seconds")
 
-        fingertip_width = env.get_fingertip_width()
-        if grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
-            print("Trial complete")
-            success = True
-            break
+            fingertip_width = env.get_fingertip_width()
+            if grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
+                print(f"---- Trial {i}: Complete")
+                success = True
+                break
 
-        if time.time() - t_start > trial_length:
-            break
+            if time.time() - t_start > trial_length:
+                print(f"---- Trial {i}: Timeout")
+                break
 
-    # put the cube back down
-    target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.04])  # Keep x, y the same and set z to 0.02
-    env.step(target_x_y_z)
-    env.open_gripper()
+        # put the cube back down
+        target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.04])  # Keep x, y the same and set z to 0.02
+        env.step(target_x_y_z)
+        env.open_gripper()
+
     env.reset()
     env.close()
 
@@ -394,7 +479,7 @@ def main():
 
     dummy_img = np.zeros((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
 
-    action = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    action = np.zeros((4,), dtype=np.float32)
     action_shm = shared_memory.SharedMemory(create=True, size=action.nbytes)
     action_array = np.ndarray(buffer=action_shm.buf, dtype=np.float32, shape=action.shape)
     image_shm = shared_memory.SharedMemory(create=True, size=dummy_img.nbytes)
@@ -403,19 +488,19 @@ def main():
     point_cam_shm = shared_memory.SharedMemory(create=True, size=point_cam.nbytes)
     point_cam_array = np.ndarray(buffer=point_cam_shm.buf, dtype=np.float32, shape=point_cam.shape)
     action_array[:] = action  # Copy the initial action to shared memory
-    p = Process(target=agent_process, args=(action_shm.name, action.shape, action.dtype,
-                                               image_shm.name, dummy_img.shape, dummy_img.dtype))
+    # p = Process(target=agent_process, args=(action_shm.name, action.shape, action.dtype,
+    #                                            image_shm.name, dummy_img.shape, dummy_img.dtype))
     # c = Process(target=camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype))
     # c = Process(target=rs_camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype, pipeline, align))
     # c = threading.Thread(target=rs_camera_thread, args=(image_array,), daemon=True)
     # c.start()  # Start the camera process
-    p.start()
+    # p.start()
     # input("Press Enter to start the control loop...")
 
     # main loop
     fps = 60
     pipeline, align = prepare_realsense(fps)
-    n_trials, max_trials, trial_process = 0, 1, None
+    n_trials, max_trials, trial_process = 0, 5, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
@@ -445,12 +530,15 @@ def main():
             point_cam = latest_point_cam
             point_cam_array[:] = point_cam
         # print(f"Cube position (x, y, z) in camera frame: {point_cam}")
-        if n_trials < max_trials and (trial_process is None or not trial_process.is_alive()):
+        # if n_trials < max_trials and (trial_process is None or not trial_process.is_alive()):
+        if trial_process is None or not trial_process.is_alive():
             n_trials += 1
-            print(point_cam_shm.name, point_cam.shape, point_cam.dtype, point_cam.dtype, point_cam_array.dtype)
-            trial_process = Process(target=run_trial, args=(action_shm.name, action.shape, action.dtype,
-                                                            point_cam_shm.name, point_cam.shape, point_cam.dtype))
+            trial_process = Process(target=run_trials, args=(max_trials, action_shm.name, action.shape, action.dtype,
+                                                            point_cam_shm.name, point_cam.shape, point_cam.dtype,
+                                                            image_shm.name, dummy_img.shape, dummy_img.dtype))
             trial_process.start()
+        if n_trials >= 1 and not trial_process.is_alive():
+            break
 
         time.sleep(max(1./fps - (time.time() - t0), 0))
 

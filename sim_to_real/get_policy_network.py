@@ -55,13 +55,27 @@ def make_inference_fn(
     network_factory: types.NetworkFactory[
         ppo_networks.PPONetworks
     ] = ppo_networks.make_ppo_networks,
+    include_prop: bool = False,
 ):
 
   normalize = lambda x, y: x
   if normalize_observations:
     normalize = running_statistics.normalize
-  ppo_network = network_factory(
-      {'pixels/view_0': (64, 64, 3)}, 4, preprocess_observations_fn=normalize
-  )
+  obs_sizes = {'pixels/view_0': (64, 64, 3)}
+  if not include_prop:
+    ppo_network = network_factory(
+        obs_sizes,
+        4,
+        preprocess_observations_fn=normalize,
+    )
+  else:
+    obs_sizes['_prop'], obs_key = (19,), '_prop'
+    ppo_network = network_factory(
+        obs_sizes,
+        4,
+        preprocess_observations_fn=normalize,
+        policy_obs_key=obs_key,
+        value_obs_key=obs_key,
+    )
   make_policy = ppo_networks.make_inference_fn(ppo_network)
   return make_policy
