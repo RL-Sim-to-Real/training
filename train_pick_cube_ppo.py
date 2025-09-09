@@ -13,11 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 """Train a PPO agent using JAX on the specified environment."""
+import os
+# xla_flags = os.environ.get("XLA_FLAGS", "")
+# xla_flags += " --xla_gpu_triton_gemm_any=True"
+# os.environ["XLA_FLAGS"] = xla_flags
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+os.environ["MUJOCO_GL"] = "egl"
+os.environ["JAX_DEFAULT_MATMUL_PRECISION"] = "highest"
+
+
 
 from datetime import datetime
 import functools
 import json
-import os
+
 import time
 import warnings
 
@@ -48,12 +57,6 @@ from mujoco_playground import registry
 from mujoco_playground import wrapper
 from mujoco_playground.config import manipulation_params
 
-xla_flags = os.environ.get("XLA_FLAGS", "")
-xla_flags += " --xla_gpu_triton_gemm_any=True"
-os.environ["XLA_FLAGS"] = xla_flags
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-os.environ["MUJOCO_GL"] = "egl"
-os.environ["JAX_DEFAULT_MATMUL_PRECISION"] = "highest"
 
 # Ignore the info logs from brax
 logging.set_verbosity(logging.WARNING)
@@ -67,7 +70,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="jax")
 # Suppress UserWarnings from absl (used by JAX and TensorFlow)
 warnings.filterwarnings("ignore", category=UserWarning, module="absl")
 
-from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision as randomize
+from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision_modified as randomize
 
 # save final policy params
 import pickle
