@@ -4,7 +4,7 @@ export MUJOCO_GL=egl
 
 
 ENV_NAME="PandaPickCubeCartesianModified"
-NUM_TIMESTEPS=50_000_000
+NUM_TIMESTEPS=30_000_000
 SEEDS=(0 1 2 3 4)
 DEVICE_ID=1
 
