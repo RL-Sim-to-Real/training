@@ -58,8 +58,10 @@ depth_frame, color_frame = None, None
 lock = threading.Lock()
 
 class Agent():
-    def __init__(self, action_name, action_shape, action_dtype, image_name, image_shape, image_dtype):
+    def __init__(self, control_mode, use_prop, action_name, action_shape, action_dtype, image_name, image_shape, image_dtype):
         np.set_printoptions(precision=3, suppress=True, linewidth=100)
+        self.control_mode = control_mode
+        self.use_prop = use_prop
     
         env_name = "PandaPickCubeCartesianModified"
     
@@ -84,21 +86,28 @@ class Agent():
         # Load the params object from the pickle file
         # policy_fn = "policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl"
         # policy_fn = "test_policies/params_general_cartesian_increment-position.pkl"
-        policy_fn = "test_policies/params_general_joint_increment-position.pkl"
+        # policy_fn = "test_policies/params_general_joint_increment-position.pkl"
         # policy_fn = "test_policies/params_general_joint-velocity.pkl"
         # policy_fn = "test_policies/params_general_cartesian_increment-position_prop.pkl"
         # policy_fn = "test_policies/params_general_joint_increment-position_prop.pkl"
         # policy_fn = "test_policies/params_general_joint-velocity_prop.pkl"
+        policy_fn = {
+            'cartesian_position': "test_policies/params_general_cartesian_increment-position.pkl",
+            'joint_position': "test_policies/params_general_joint_increment-position.pkl",
+            'joint_velocity': "test_policies/params_general_joint-velocity.pkl",
+            'joint_torque': "test_policies/params_general_joint-torque.pkl",
+        }[control_mode]
+        if use_prop:
+            policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
         with open(policy_fn, "rb") as f:
             params = pickle.load(f)
     
-        self.use_prop = 'prop' in policy_fn
-        self.action_shape = (4,) if 'cartesian' in policy_fn else (7,)
-        inference_fn = make_inference_fn(network_factory=network_factory, include_prop=self.use_prop)
+        self.action_shape = (4,) if 'cartesian' in policy_fn else (8,)
+        inference_fn = make_inference_fn(network_factory=network_factory, action_size=self.action_shape[0], include_prop=use_prop)
     
         self.jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
-        self.action_shm = shared_memory.SharedMemory(name=action_name)
-        self.action_array = np.ndarray(self.action_shape, dtype=action_dtype, buffer=self.action_shm.buf)
+        # self.action_shm = shared_memory.SharedMemory(name=action_name)
+        # self.action_array = np.ndarray(self.action_shape, dtype=action_dtype, buffer=self.action_shm.buf)
         self.image_shm = shared_memory.SharedMemory(name=image_name)
         self.img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=self.image_shm.buf)
         self.key = jax.random.PRNGKey(0)
@@ -115,8 +124,8 @@ class Agent():
         return action
 
     def __del__(self):
-        self.action_shm.close()
-        self.action_shm.unlink()
+        # self.action_shm.close()
+        # self.action_shm.unlink()
         self.image_shm.close()
         self.image_shm.unlink()
 
@@ -378,10 +387,17 @@ def reset_cube_position(point_cam_array, env, target_joints):
     put_cube_on_white_strip(env, angle, pose_ee)
 
 def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_name, point_cam_shape, point_cam_dtype, image_name, image_shape, image_dtype):
-    action_shm = shared_memory.SharedMemory(name=action_name)
-    action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
-    env = FrankaPickCubeCartesian(camera_index=0) #, dt=0.004)
-    agent = Agent(action_name, action_shape, action_dtype, image_name, image_shape, image_dtype)
+    control_mode = [
+        'cartesian_position',
+        'joint_position',
+        'joint_velocity',
+        'joint_torque',
+    ][0]
+    use_prop = False
+    # action_shm = shared_memory.SharedMemory(name=action_name)
+    # action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
+    env = FrankaPickCubeCartesian(camera_index=0, control_mode=control_mode)
+    agent = Agent(control_mode, use_prop, action_name, action_shape, action_dtype, image_name, image_shape, image_dtype)
 
     # reset the cube position
     point_cam_shm = shared_memory.SharedMemory(name=point_cam_name)
@@ -414,16 +430,19 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             proprioception = None
             if agent.use_prop:
                 obs = env.get_state()
-                # proprioception = np.concatenate([obs['joints'], obs['joint_vels'], action, np.array([float(grasped)])], axis=0).astype(np.float32)
-                proprioception = np.zeros((2,), dtype=np.float32)
+                proprioception = np.concatenate([obs['joints'], obs['joint_vels'], action, np.array([float(grasped)])], axis=0).astype(np.float32)
+                # proprioception = np.zeros((2,), dtype=np.float32)
                 print(f"Proprioception: {proprioception.shape}, {proprioception}")
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.8 and not grasped): # grasp it only once
+            if (action[-1] < -0.7 and not grasped): # grasp it only once
                 print("attempting grasp")
                 grasped = env.grasp_object()
                 time.sleep(0.25)  # Wait for the gripper to close
+            if grasped and action[-1] >= -0.0:
+                env.open_gripper()
+                time.sleep(0.25)
             
             # reopen gripper if grasp was unsuccessful
             fingertip_width = env.get_fingertip_width()
@@ -434,13 +453,8 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
                 time.sleep(0.25)  # Wait for the gripper to open
                 grasped = False
 
-            target_x_y_z = 0.04 * action[:3] + ee_pos
-            target_x_y_z = jp.array([target_x_y_z[0], \
-                                    jp.clip(target_x_y_z[1], -0.4, 0.4), \
-                                    jp.clip(target_x_y_z[2], 0.035, 0.2)]) # for safety
             start = time.time()
-            ee_pos = env.step(target_x_y_z)
-            print(f"Target position: {target_x_y_z}, Current position: {ee_pos}")
+            ee_pos = env.step(action)
             end = time.time()
             print(f"Time taken for one step: {end - start:.3f} seconds")
 
@@ -455,8 +469,8 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
                 break
 
         # put the cube back down
-        target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.04])  # Keep x, y the same and set z to 0.02
-        env.step(target_x_y_z)
+        target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.06])  # Keep x, y the same and set z to 0.02
+        env.move_to_pose_ee(target_x_y_z)
         env.open_gripper()
 
     env.reset()
@@ -479,7 +493,7 @@ def main():
 
     dummy_img = np.zeros((64, 64, 3), dtype=np.uint8) * 255  # Dummy image for initialization
 
-    action = np.zeros((4,), dtype=np.float32)
+    action = np.zeros((8,), dtype=np.float32)
     action_shm = shared_memory.SharedMemory(create=True, size=action.nbytes)
     action_array = np.ndarray(buffer=action_shm.buf, dtype=np.float32, shape=action.shape)
     image_shm = shared_memory.SharedMemory(create=True, size=dummy_img.nbytes)
