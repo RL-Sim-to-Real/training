@@ -11,9 +11,12 @@ DEVICE_ID=1
 # Only include compatible pairs here:
 
 PAIRS=(
+  "position cartesian_increment"
+  "position joint_increment"
   "velocity joint"
   "torque joint"
 )
+action_scales=(0.02 0.02 1.0 1.0)
 
 for seed in "${SEEDS[@]}"; do
 
@@ -27,17 +30,17 @@ for seed in "${SEEDS[@]}"; do
 
     # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
     # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
-    python train_pick_cube_ppo.py \
-      --env_name="$ENV_NAME" \
-      --num_timesteps="$NUM_TIMESTEPS" \
-      --seed="$seed" \
-      --actuator="$actuator" \
-      --action="$action" \
-      --use_tb \
-      --log_training_metrics \
-      --vision \
-      --device_id=1 \
-      --action_scale=1.0 
+    # python train_pick_cube_ppo.py \
+    #   --env_name="$ENV_NAME" \
+    #   --num_timesteps="$NUM_TIMESTEPS" \
+    #   --seed="$seed" \
+    #   --actuator="$actuator" \
+    #   --action="$action" \
+    #   --use_tb \
+    #   --log_training_metrics \
+    #   --vision \
+    #   --device_id=1 \
+    #   --action_scale=1.0 
 
     # With propioception
     # MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
@@ -53,7 +56,7 @@ for seed in "${SEEDS[@]}"; do
       --vision \
       --proprioception \
       --device_id=1 \
-      --action_scale=1.0 
+      --action_scale="${action_scales[$i]}"
 
   done
 
