@@ -52,8 +52,8 @@ def load_scalars(run_dir: str, tag: str):
     vals = np.array([e.value for e in events], dtype=float)
     
     # Set first value of 'episode/success' tag to 0
-    if tag == 'episode/success' and len(vals) > 0:
-        vals[0] = 0.0
+    if tag == 'episode/success' and len(vals) > 5:
+        vals[:5] = 0.0
     
     return steps, wall, vals
 

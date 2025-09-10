@@ -12,7 +12,11 @@ DEVICE_ID=0
 PAIRS=(
   "position cartesian_increment"
   "position joint_increment"
+  "velocity joint"
+  "torque joint"
 )
+
+action_scales=(0.02 0.02 1.0 1.0)
 
 
 for seed in "${SEEDS[@]}"; do
@@ -35,24 +39,24 @@ for seed in "${SEEDS[@]}"; do
       --log_training_metrics \
       --vision \
       --device_id="$DEVICE_ID" \
-      --action_scale=0.02
+      --action_scale="${action_scales[$i]}"
 
 
     # With proprioception
     # MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
     # MADRONA_BVH_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache \
-    python train_pick_cube_ppo.py \
-      --env_name="$ENV_NAME" \
-      --num_timesteps="$NUM_TIMESTEPS" \
-      --seed="$seed" \
-      --actuator="$actuator" \
-      --action="$action" \
-      --use_tb \
-      --log_training_metrics \
-      --vision \
-      --proprioception \
-      --device_id="$DEVICE_ID" \
-      --action_scale=0.02 
+    # python train_pick_cube_ppo.py \
+    #   --env_name="$ENV_NAME" \
+    #   --num_timesteps="$NUM_TIMESTEPS" \
+    #   --seed="$seed" \
+    #   --actuator="$actuator" \
+    #   --action="$action" \
+    #   --use_tb \
+    #   --log_training_metrics \
+    #   --vision \
+    #   --proprioception \
+    #   --device_id="$DEVICE_ID" \
+    #   --action_scale=0.02 
 
     
 
