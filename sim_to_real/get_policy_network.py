@@ -52,6 +52,7 @@ Metrics = types.Metrics
 
 def make_inference_fn(
     normalize_observations: bool = False,
+    action_size: int = 4,
     network_factory: types.NetworkFactory[
         ppo_networks.PPONetworks
     ] = ppo_networks.make_ppo_networks,
@@ -65,14 +66,14 @@ def make_inference_fn(
   if not include_prop:
     ppo_network = network_factory(
         obs_sizes,
-        4,
+        action_size,
         preprocess_observations_fn=normalize,
     )
   else:
     obs_sizes['_prop'], obs_key = (19,), '_prop'
     ppo_network = network_factory(
         obs_sizes,
-        4,
+        action_size,
         preprocess_observations_fn=normalize,
         policy_obs_key=obs_key,
         value_obs_key=obs_key,
