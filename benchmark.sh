@@ -10,17 +10,18 @@ DEVICE_ID=0
 # Only include compatible pairs here:
 
 PAIRS=(
-  "position cartesian_increment"
-  "position joint_increment"
   "velocity joint"
   "torque joint"
+  "position cartesian_increment"
+  "position joint_increment"
+
 )
 
-action_scales=(0.02 0.02 1.0 1.0)
+action_scales=(1.0 1.0 0.02 0.02)
 
 
 for seed in "${SEEDS[@]}"; do
-  
+  i=0
   for pair in "${PAIRS[@]}"; do
     set -- $pair
     actuator="$1"
@@ -57,10 +58,7 @@ for seed in "${SEEDS[@]}"; do
     #   --proprioception \
     #   --device_id="$DEVICE_ID" \
     #   --action_scale=0.02 
-
-    
-
-
+    ((i++))
   done
 
   # Pause before the next run to cool-down GPU
