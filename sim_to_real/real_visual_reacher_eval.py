@@ -1,5 +1,6 @@
 # @title Import MuJoCo, MJX, and Brax
 import os
+
 # On your second reading, load the compiled rendering backend to save time!
 # os.environ["MADRONA_MWGPU_KERNEL_CACHE"] = "<YOUR_PATH>/madrona_mjx/build/cache"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"  # Ensure that Madrona gets the chance to pre-allocate memory before Jax
@@ -20,6 +21,7 @@ import numpy as np
 
 
 import cv2
+from camera import Camera
 
 
 from flax import serialization
@@ -42,6 +44,7 @@ import json
 from multiprocessing import shared_memory, Process, set_start_method
 import threading
 import pyrealsense2 as rs
+from pathlib import Path
 
 from franka_real.FrankaPickCubeCartesian import FrankaPickCubeCartesian
 from franka_real.FrankaEvalAutomator import FrankaEvalAutomator
@@ -62,13 +65,12 @@ class Agent():
         np.set_printoptions(precision=3, suppress=True, linewidth=100)
         self.control_mode = control_mode
         self.use_prop = use_prop
-    
+
         env_name = "PandaPickCubeCartesianModified"
-    
+
         # Rasterizer is less feature-complete than ray-tracing backend but stable
         layer_size = 256
-    
-    
+
         network_factory = functools.partial(
             ppo_networks_vision.make_ppo_networks_vision,
             policy_hidden_layer_sizes=[layer_size, layer_size],
@@ -76,21 +78,12 @@ class Agent():
             # activation=linen.relu, # only works with default activation right now
             normalise_channels=True,
         )
-    
+
         ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
-    
+
         del ppo_params.network_factory
         ppo_params.network_factory = network_factory
-    
-    
-        # Load the params object from the pickle file
-        # policy_fn = "policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl"
-        # policy_fn = "test_policies/params_general_cartesian_increment-position.pkl"
-        # policy_fn = "test_policies/params_general_joint_increment-position.pkl"
-        # policy_fn = "test_policies/params_general_joint-velocity.pkl"
-        # policy_fn = "test_policies/params_general_cartesian_increment-position_prop.pkl"
-        # policy_fn = "test_policies/params_general_joint_increment-position_prop.pkl"
-        # policy_fn = "test_policies/params_general_joint-velocity_prop.pkl"
+
         policy_fn = {
             'cartesian_position': "test_policies/params_general_cartesian_increment-position.pkl",
             'joint_position': "test_policies/params_general_joint_increment-position.pkl",
@@ -98,13 +91,14 @@ class Agent():
             'joint_torque': "test_policies/params_general_joint-torque.pkl",
         }[control_mode]
         if use_prop:
+            policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
             policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
         with open(policy_fn, "rb") as f:
             params = pickle.load(f)
-    
+
         self.action_shape = (4,) if 'cartesian' in policy_fn else (8,)
         inference_fn = make_inference_fn(network_factory=network_factory, action_size=self.action_shape[0], include_prop=use_prop)
-    
+
         self.jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
         # self.action_shm = shared_memory.SharedMemory(name=action_name)
         # self.action_array = np.ndarray(self.action_shape, dtype=action_dtype, buffer=self.action_shm.buf)
@@ -187,7 +181,6 @@ def agent_process(action_name, action_shape, action_dtype,
     image_shm.close()
 
 def camera_process(image_name, image_shape, image_dtype):
-    from camera import Camera
     camera = Camera(cam_index=4)
     # FIXME: set the frame dimensions to be square to match training
     image_shm = shared_memory.SharedMemory(name=image_name)
@@ -392,8 +385,8 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'joint_torque',
-    ][0]
-    use_prop = False
+    ][2]
+    use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
     # action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
     env = FrankaPickCubeCartesian(camera_index=0, control_mode=control_mode)
@@ -419,39 +412,42 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         env.apply_joint_vel(np.zeros((7,)))
 
         success = False
-        grasped = False
+        env.grasped = False
         ee_pos,_ = env.reset()
         t_start = time.time()
         print("Resetting cube position...")
         env.open_gripper()
         action = np.zeros(agent.action_shape, dtype=np.float32)
+        env.logger.clear()
         while True:
             # action = action_array.copy()  # Copy the action from shared memory
             proprioception = None
             if agent.use_prop:
                 obs = env.get_state()
-                proprioception = np.concatenate([obs['joints'], obs['joint_vels'], action, np.array([float(grasped)])], axis=0).astype(np.float32)
+                # proprioception = np.concatenate([obs['joints'], obs['joint_vels'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
+                proprioception = np.concatenate([obs['joint_vels'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
                 # proprioception = np.zeros((2,), dtype=np.float32)
                 print(f"Proprioception: {proprioception.shape}, {proprioception}")
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.7 and not grasped): # grasp it only once
+            if (action[-1] < -0.7 and not env.grasped): # grasp it only once
                 print("attempting grasp")
-                grasped = env.grasp_object()
+                env.grasped = env.grasp_object()
                 time.sleep(0.25)  # Wait for the gripper to close
-            if grasped and action[-1] >= -0.0:
+            if env.grasped and action[-1] >= -0.0:
                 env.open_gripper()
+                env.grasped = False
                 time.sleep(0.25)
             
             # reopen gripper if grasp was unsuccessful
             fingertip_width = env.get_fingertip_width()
-            if grasped and fingertip_width < 0.035:
+            if env.grasped and fingertip_width < 0.035:
                 print('unsuccessful grasp, opening gripper')
                 env.gripper.stop_action()
                 env.gripper.open()
                 time.sleep(0.25)  # Wait for the gripper to open
-                grasped = False
+                env.grasped = False
 
             start = time.time()
             ee_pos = env.step(action)
@@ -459,7 +455,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             print(f"Time taken for one step: {end - start:.3f} seconds")
 
             fingertip_width = env.get_fingertip_width()
-            if grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
+            if env.grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
                 print(f"---- Trial {i}: Complete")
                 success = True
                 break
@@ -468,10 +464,18 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
                 print(f"---- Trial {i}: Timeout")
                 break
 
+        env.logger.metrics[-1]['success'] = success
+
         # put the cube back down
-        target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.06])  # Keep x, y the same and set z to 0.02
-        env.move_to_pose_ee(target_x_y_z)
+        if env.grasped:
+            target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.08])  # Keep x, y the same and set z to 0.02
+            env.move_to_pose_ee(target_x_y_z)
         env.open_gripper()
+
+        # save logs
+        fp = Path(f'real_franka_eval_logs/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl')
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        env.logger.save(fp)
 
     env.reset()
     env.close()
@@ -488,6 +492,11 @@ def prepare_realsense(fps):
     return pipeline, align
 
 def main():
+    record_video = False
+    if record_video:
+        video, video_ts = [], []
+        ext_cam = Camera(cam_index=6)
+        
     # env = FrankaPickCubeCartesian(camera_index=0)
     eval_automator = FrankaEvalAutomator()
 
@@ -514,7 +523,7 @@ def main():
     # main loop
     fps = 60
     pipeline, align = prepare_realsense(fps)
-    n_trials, max_trials, trial_process = 0, 5, None
+    n_processes, max_trials, trial_process = 0, 10, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
@@ -526,6 +535,7 @@ def main():
             continue
 
         img = np.asanyarray(color_frame.get_data())
+        original_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         # img = np.asanyarray(depth_frame.get_data())
         # img = cv2.convertScaleAbs(img, alpha=0.10)
         # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
@@ -539,22 +549,41 @@ def main():
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+        if record_video:
+            ext_frame = ext_cam.capture_img()
+            ext_frame = cv2.cvtColor(ext_frame, cv2.COLOR_BGR2RGB)
+            # put img in the bottom left corner of ext_frame
+            ext_frame[:64, :64, :] = img
+            video.append(np.concatenate([ext_frame, original_img], axis=1))
+            video_ts.append(time.time())
+            # cv2.imshow("External Camera", ext_frame)
+            # cv2.waitKey(1)
+
         latest_point_cam = eval_automator.get_red_cube_position(depth_frame, color_frame)
         if latest_point_cam is not None:
             point_cam = latest_point_cam
             point_cam_array[:] = point_cam
         # print(f"Cube position (x, y, z) in camera frame: {point_cam}")
-        # if n_trials < max_trials and (trial_process is None or not trial_process.is_alive()):
-        if trial_process is None or not trial_process.is_alive():
-            n_trials += 1
+        # if n_processes < max_trials and (trial_process is None or not trial_process.is_alive()):
+        if n_processes == 0 and (trial_process is None or not trial_process.is_alive()):
+            n_processes += 1
             trial_process = Process(target=run_trials, args=(max_trials, action_shm.name, action.shape, action.dtype,
                                                             point_cam_shm.name, point_cam.shape, point_cam.dtype,
                                                             image_shm.name, dummy_img.shape, dummy_img.dtype))
             trial_process.start()
-        if n_trials >= 1 and not trial_process.is_alive():
+        if n_processes >= 1 and not trial_process.is_alive():
             break
 
         time.sleep(max(1./fps - (time.time() - t0), 0))
+
+    # store the video
+    print('----------------------------------------------------------------- storing video...')
+    if record_video:
+        video_fp = f'real_franka_eval_logs/videos/real_franka_eval_{datetime.now().strftime("%Y%m%d_%H%M%S")}.mp4'
+        video = np.stack(video)
+        video_fps = len(video) / (video_ts[-1] - video_ts[0])
+        media.write_video(video_fp, np.array(video), fps=video_fps)
+        ext_cam.cap.release()
 
     if trial_process is not None:
         trial_process.join()
@@ -567,7 +596,7 @@ def main():
 
     # env.reset()
     # env.close()
-    p.join()  # Wait for the agent process to finish
+    # p.join()  # Wait for the agent process to finish
     # c.join()  
     action_shm.close()
     action_shm.unlink()  # Unlink the shared memory
