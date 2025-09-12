@@ -11,8 +11,8 @@ DEVICE_ID=1
 # Only include compatible pairs here:
 
 PAIRS=(
-  "velocity joint"
-  "torque joint"
+  # "velocity joint"
+  # "torque joint"
   "position cartesian_increment"
   "position joint_increment"
 )

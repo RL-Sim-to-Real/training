@@ -212,6 +212,7 @@ def main(argv):
       "episode_length": episode_length,
       "vision": True,
       "proprioception": _PROPRIOCEPTION.value, 
+      "full_proprioception": False,
       "obs_noise.brightness": [0.75, 2.0],
       "vision_config.use_rasterizer": False,
       "vision_config.render_batch_size": num_envs,
@@ -219,7 +220,7 @@ def main(argv):
       "vision_config.render_height": 64,
       "box_init_range": 0.1, # +- 10 cm
       "action_history_length": 5,
-      "success_threshold": 0.03,
+      "success_threshold": 0.03,  
       "action_scale": _ACTION_SCALE.value, 
       "actuator": _ACTUATOR.value,
       "action": _ACTION_SPACE.value,
