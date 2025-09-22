@@ -70,7 +70,7 @@ def make_inference_fn(
         preprocess_observations_fn=normalize,
     )
   else:
-    obs_sizes['_prop'], obs_key = (19,), '_prop'
+    obs_sizes['_prop'], obs_key = (17,), '_prop'
     ppo_network = network_factory(
         obs_sizes,
         action_size,

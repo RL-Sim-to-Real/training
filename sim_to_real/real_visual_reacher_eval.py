@@ -73,8 +73,8 @@ class Agent():
 
         network_factory = functools.partial(
             ppo_networks_vision.make_ppo_networks_vision,
-            policy_hidden_layer_sizes=[layer_size, layer_size],
-            value_hidden_layer_sizes= [layer_size, layer_size],
+            policy_hidden_layer_sizes=[layer_size, layer_size, layer_size],
+            value_hidden_layer_sizes= [layer_size, layer_size, layer_size],
             # activation=linen.relu, # only works with default activation right now
             normalise_channels=True,
         )
@@ -91,7 +91,7 @@ class Agent():
             'joint_torque': "test_policies/params_general_joint-torque.pkl",
         }[control_mode]
         if use_prop:
-            policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
+            # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
             policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
         with open(policy_fn, "rb") as f:
             params = pickle.load(f)
@@ -135,8 +135,8 @@ def agent_process(action_name, action_shape, action_dtype,
 
     network_factory = functools.partial(
         ppo_networks_vision.make_ppo_networks_vision,
-        policy_hidden_layer_sizes=[layer_size, layer_size],
-        value_hidden_layer_sizes= [layer_size, layer_size],
+        policy_hidden_layer_sizes=[layer_size, layer_size, layer_size],
+        value_hidden_layer_sizes= [layer_size, layer_size, layer_size],
         # activation=linen.relu, # only works with default activation right now
         normalise_channels=True,
     )
@@ -167,7 +167,7 @@ def agent_process(action_name, action_shape, action_dtype,
             key, _ = jax.random.split(key)
             obs = {'pixels/view_0': img_array.copy()}
             if 'prop' in policy_fn:
-                obs['_prop'] = np.array([0.0]*19, dtype=np.float32)
+                obs['_prop'] = np.array([0.0]*17, dtype=np.float32)
             t0 = time.time()
             action, _ = jit_inference_fn(obs, key) # imperical inference time is 0.016
             print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
@@ -328,7 +328,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     env.move_to_pose_ee(pose_ee)
     # time.sleep(1)
     # randomize the cube position
-    cube_pos = np.array([np.random.uniform(0.565, 0.595), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
+    cube_pos = np.array([np.random.uniform(0.53, 0.625), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
     # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
     print(f"Moving cube to new position: {cube_pos[:2]}")
     env.move_to_pose_ee(cube_pos)
@@ -380,6 +380,7 @@ def reset_cube_position(point_cam_array, env, target_joints):
     put_cube_on_white_strip(env, angle, pose_ee)
 
 def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_name, point_cam_shape, point_cam_dtype, image_name, image_shape, image_dtype):
+    save_logs = True
     control_mode = [
         'cartesian_position',
         'joint_position',
@@ -398,6 +399,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
 
     # reset the robot joints to initial position
     target_joints = np.array([-0.01266706, 0.23113158, 0.01397337, -2.11847885, -0.00837887, 2.33090511, 0.80890272])
+    # target_joints = np.array([-0.00002, 0.47804, -0.00055, -1.81309, -0.00161, 2.34597, 0.78501])
     env.move_to_joint_positions(target_joints)
 
     trial_length = 60
@@ -424,18 +426,26 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             proprioception = None
             if agent.use_prop:
                 obs = env.get_state()
-                # proprioception = np.concatenate([obs['joints'], obs['joint_vels'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
-                proprioception = np.concatenate([obs['joint_vels'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
+                joint_p = obs['joints']
+                normalized_jp = 2 * (joint_p - jp.array(_jnt_range())[:, 0]) / (
+                    jp.array(_jnt_range())[:, 1] - jp.array(_jnt_range())[:, 0]
+                ) - 1
+                proprioception = np.concatenate([ 
+                    obs['height'],
+                    normalized_jp, 
+                                                #  obs['joint_vels'], 
+                    action, np.array([float(env.grasped)])], axis=-1).astype(np.float32)
+                # proprioception = np.concatenate([obs['height'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
                 # proprioception = np.zeros((2,), dtype=np.float32)
                 print(f"Proprioception: {proprioception.shape}, {proprioception}")
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.7 and not env.grasped): # grasp it only once
+            if (action[-1] < -0.3 and not env.grasped): # grasp it only once
                 print("attempting grasp")
                 env.grasped = env.grasp_object()
                 time.sleep(0.25)  # Wait for the gripper to close
-            if env.grasped and action[-1] >= -0.0:
+            if env.grasped and action[-1] >= 0.1:
                 env.open_gripper()
                 env.grasped = False
                 time.sleep(0.25)
@@ -473,9 +483,10 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         env.open_gripper()
 
         # save logs
-        fp = Path(f'real_franka_eval_logs/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl')
-        fp.parent.mkdir(parents=True, exist_ok=True)
-        env.logger.save(fp)
+        if save_logs:
+            fp = Path(f'real_franka_eval_logs/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl.csv')
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            env.logger.save(fp)
 
     env.reset()
     env.close()
@@ -491,8 +502,20 @@ def prepare_realsense(fps):
     align = rs.align(rs.stream.color)
     return pipeline, align
 
+def _jnt_range():
+    # TODO(siholt): Use joint limits from XML.
+    return [
+        [-2.8973, 2.8973],
+        [-1.7628, 1.7628],
+        [-2.8973, 2.8973],
+        [-3.0718, -0.0698],
+        [-2.8973, 2.8973],
+        [-0.0175, 3.7525],
+        [-2.8973, 2.8973],
+    ]
+
 def main():
-    record_video = False
+    record_video = True 
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -523,7 +546,7 @@ def main():
     # main loop
     fps = 60
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 10, None
+    n_processes, max_trials, trial_process = 0, 1, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
