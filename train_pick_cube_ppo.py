@@ -212,7 +212,6 @@ def main(argv):
       "episode_length": episode_length,
       "vision": True,
       "proprioception": _PROPRIOCEPTION.value, 
-      "full_proprioception": False,
       "obs_noise.brightness": [0.75, 2.0],
       "vision_config.use_rasterizer": False,
       "vision_config.render_batch_size": num_envs,
@@ -242,8 +241,8 @@ def main(argv):
   )
   network_factory = functools.partial(
       ppo_networks_vision.make_ppo_networks_vision,
-      policy_hidden_layer_sizes=[256, 256],
-      value_hidden_layer_sizes=[256, 256],
+      policy_hidden_layer_sizes=[256, 256, 256],
+      value_hidden_layer_sizes=[256, 256, 256],
       # activation=linen.relu, # only works with default activation right now
       normalise_channels=True,
       policy_obs_key="_prop" if env_cfg.proprioception else None, # determine wether to use proprioception
