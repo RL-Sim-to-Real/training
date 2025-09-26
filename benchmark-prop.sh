@@ -4,8 +4,8 @@ export MUJOCO_GL=egl
 
 
 ENV_NAME="PandaPickCubeCartesianModified"
-NUM_TIMESTEPS=6_000_000
-SEEDS=(0)
+NUM_TIMESTEPS=20_000_000
+SEEDS=(0 1 2 3 4 5 6 7 8 9)
 DEVICE_ID=1
 
 # Only include compatible pairs here:
@@ -13,10 +13,10 @@ DEVICE_ID=1
 PAIRS=(
   "velocity joint"
   # "torque joint"
-  # "position cartesian_increment"
-  # "position joint_increment"
+  "position cartesian_increment"
+  "position joint_increment"
 )
-action_scales=(1.0 0.02 0.02 0.02)
+action_scales=(1.0 0.05 0.05 0.05)
 
 for seed in "${SEEDS[@]}"; do
 
@@ -43,8 +43,8 @@ for seed in "${SEEDS[@]}"; do
     #   --action_scale="${action_scales[$i]}" 
 
     # With propioception
-    MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
-    MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
+    # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
+    # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
     python train_pick_cube_ppo.py \
       --env_name="$ENV_NAME" \
       --num_timesteps="$NUM_TIMESTEPS" \
@@ -55,7 +55,7 @@ for seed in "${SEEDS[@]}"; do
       --log_training_metrics \
       --vision \
       --proprioception \
-      --device_id=0 \
+      --device_id="$DEVICE_ID" \
       --action_scale="${action_scales[$i]}"
     ((i++))
   done

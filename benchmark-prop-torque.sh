@@ -4,7 +4,7 @@ export MUJOCO_GL=egl
 
 ENV_NAME="PandaPickCubeCartesianModified"
 NUM_TIMESTEPS=50_000_000
-SEEDS=(0)
+SEEDS=(0 1 2 3 4 5 6 7 8 9)
 DEVICE_ID=0
 
 # Only include compatible pairs here:
@@ -43,8 +43,8 @@ for seed in "${SEEDS[@]}"; do
     #   --action_scale="${action_scales[$i]}"
 
     # With proprioception
-    MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
-    MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
+    # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
+    # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
     python train_pick_cube_ppo.py \
       --env_name="$ENV_NAME" \
       --num_timesteps="$NUM_TIMESTEPS" \
