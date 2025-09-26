@@ -167,7 +167,7 @@ def agent_process(action_name, action_shape, action_dtype,
             key, _ = jax.random.split(key)
             obs = {'pixels/view_0': img_array.copy()}
             if 'prop' in policy_fn:
-                obs['_prop'] = np.array([0.0]*17, dtype=np.float32)
+                obs['_prop'] = np.array([0.0]*24, dtype=np.float32)
             t0 = time.time()
             action, _ = jit_inference_fn(obs, key) # imperical inference time is 0.016
             print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
@@ -320,7 +320,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
     grasp_height = 0.065
     pose_ee[2] = grasp_height
-    pose_ee[0] += 0.015 # offset to be above the cube center
+    pose_ee[0] -= 0.015 # offset to be above the cube center
     env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle)
     env.grasp_object()
     # time.sleep(0.25)
@@ -328,7 +328,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     env.move_to_pose_ee(pose_ee)
     # time.sleep(1)
     # randomize the cube position
-    cube_pos = np.array([np.random.uniform(0.53, 0.625), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
+    cube_pos = np.array([np.random.uniform(0.55, 0.65), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
     # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
     print(f"Moving cube to new position: {cube_pos[:2]}")
     env.move_to_pose_ee(cube_pos)
@@ -430,22 +430,27 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
                 normalized_jp = 2 * (joint_p - jp.array(_jnt_range())[:, 0]) / (
                     jp.array(_jnt_range())[:, 1] - jp.array(_jnt_range())[:, 0]
                 ) - 1
+                joint_v = obs['joint_vels']
+
+                normalized_jv = 2 * (joint_v - jp.array(_jnt_vel_range())[:, 0]) / (
+                    jp.array(_jnt_vel_range())[:, 1] - jp.array(_jnt_vel_range())[:, 0]
+                ) - 1
+                
                 proprioception = np.concatenate([ 
-                    obs['height'],
                     normalized_jp, 
-                                                #  obs['joint_vels'], 
-                    action, np.array([float(env.grasped)])], axis=-1).astype(np.float32)
+                    normalized_jv,  # Include joint velocities in proprioception
+                    action, obs['height'], np.array([float(env.grasped)])], axis=-1).astype(np.float32)
                 # proprioception = np.concatenate([obs['height'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
                 # proprioception = np.zeros((2,), dtype=np.float32)
                 print(f"Proprioception: {proprioception.shape}, {proprioception}")
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.3 and not env.grasped): # grasp it only once
+            if (action[-1] < -0.1 and not env.grasped): # grasp it only once
                 print("attempting grasp")
                 env.grasped = env.grasp_object()
                 time.sleep(0.25)  # Wait for the gripper to close
-            if env.grasped and action[-1] >= 0.1:
+            if env.grasped and action[-1] >= 0.3:
                 env.open_gripper()
                 env.grasped = False
                 time.sleep(0.25)
@@ -514,8 +519,21 @@ def _jnt_range():
         [-2.8973, 2.8973],
     ]
 
+
+def _jnt_vel_range():
+    return [
+        [-2.1750, 2.1750],
+        [-2.1750, 2.1750],
+        [-2.1750, 2.1750],
+        [-2.1750, 2.1750],
+        [-2.6100, 2.6100],
+        [-2.6100, 2.6100],
+        [-2.6100, 2.6100],
+    ]
+
+
 def main():
-    record_video = True 
+    record_video = False
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -546,7 +564,7 @@ def main():
     # main loop
     fps = 60
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 1, None
+    n_processes, max_trials, trial_process = 0, 10, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
