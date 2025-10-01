@@ -72,9 +72,6 @@ def plot_group_results(run_dfs, tags, sub_plot, rg_names:list[str], color="", bi
         ax.set_xlabel("Env Step")
         ax.set_ylabel(axis_tag_names.get(tag, tag))
 
-
-        
-
     return fig
 
 
@@ -108,7 +105,7 @@ def get_run_group_dfs(group_name:str="", run_groups: dict = {}):
 
 
 
-def plot_results(run_groups):
+def plot_results(run_groups, legend_names):
     # use Times New Roman and increase tick/axis title sizes
     print("generating plot")
     sns.set_style("white")
@@ -124,6 +121,8 @@ def plot_results(run_groups):
     tags = tb_tags_list
     fig, axes = plt.subplots(1, len(tags), figsize=(30, 5), constrained_layout=True)
     rg_names = run_groups.keys()
+
+    
     
     palette = sns.color_palette("tab10", n_colors=len(tags))
     for indx,g_name in tqdm(enumerate(rg_names)):
@@ -132,7 +131,7 @@ def plot_results(run_groups):
     # display the final combined figure and save to disk
 
     for indx, ax in enumerate(axes):
-        labels = list(rg_names)
+        labels = [legend_names[n] for n in list(rg_names)]
         handles = [ax.plot([], [], color=palette[i], lw=2)[0] for i in range(len(labels))]
         ax.legend(handles, labels)
 
