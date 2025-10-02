@@ -167,7 +167,7 @@ def agent_process(action_name, action_shape, action_dtype,
             key, _ = jax.random.split(key)
             obs = {'pixels/view_0': img_array.copy()}
             if 'prop' in policy_fn:
-                obs['_prop'] = np.array([0.0]*24, dtype=np.float32)
+                obs['_prop'] = np.array([0.0]*20, dtype=np.float32)
             t0 = time.time()
             action, _ = jit_inference_fn(obs, key) # imperical inference time is 0.016
             print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
@@ -298,17 +298,27 @@ def make_cube_upright(env, pose_ee, angle, angle_180):
     cube_ee_angle[1] -= grasp_offset * np.pi / 180.
     env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
     pose_ee[2] = grasp_height
-    # pose_ee[0] += 0.015 # offset to be above the cube center
+    pose_ee[0] -= 0.025 # offset to be above the cube center
     env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
     env.grasp_object()
     pose_ee[2] = 0.3
+    ee_angle_flipped = ee_angle.copy()
+    ee_angle_flipped[2] -= np.pi
     env.move_to_pose_ee(pose_ee)
+    # env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle_flipped)
     # randomize the cube position
     cube_pos = np.array([0.48, 0.0, grasp_height + 0.04])
     rotated_ee_angle = ee_angle.copy()
+    # rotated_ee_angle = ee_angle_flipped.copy()
+    # rotated_ee_angle[2] += 2 * np.pi
+    # rotated_ee_angle[0] -= 2 * np.pi
     rotated_ee_angle[1] += (90 - 10 - grasp_offset) * np.pi / 180.
+    # rotated_ee_angle[:] = np.array([-3.0955338940062007, -1.4469287101661383, 3.013493680787076])
+    # # rotated_ee_angle[1] -= 150 * np.pi / 180.
+    # print(f'ee_angle_flipped: {ee_angle_flipped}')
+    # print(f'rotated_ee_angle: {rotated_ee_angle}')
     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
-    cube_pos[2] = grasp_height + 0.01
+    cube_pos[2] = grasp_height + 0.03
     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
     env.open_gripper()
     pose_ee[:2] = cube_pos[:2]
@@ -328,7 +338,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     env.move_to_pose_ee(pose_ee)
     # time.sleep(1)
     # randomize the cube position
-    cube_pos = np.array([np.random.uniform(0.55, 0.65), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
+    cube_pos = np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
     # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
     print(f"Moving cube to new position: {cube_pos[:2]}")
     env.move_to_pose_ee(cube_pos)
@@ -386,7 +396,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'joint_torque',
-    ][2]
+    ][0]
     use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
     # action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
@@ -446,11 +456,11 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.1 and not env.grasped): # grasp it only once
+            if (action[-1] < -0.3 and not env.grasped): # grasp it only once
                 print("attempting grasp")
                 env.grasped = env.grasp_object()
                 time.sleep(0.25)  # Wait for the gripper to close
-            if env.grasped and action[-1] >= 0.3:
+            if env.grasped and action[-1] >= 0.4:
                 env.open_gripper()
                 env.grasped = False
                 time.sleep(0.25)
