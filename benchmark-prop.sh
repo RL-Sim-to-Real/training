@@ -16,7 +16,7 @@ PAIRS=(
   # "position cartesian_increment"
   # "position joint_increment"
 )
-action_scales=(2.0 0.05 0.05 0.05)
+action_scales=(1.0 0.05 0.05 0.05)
 
 for seed in "${SEEDS[@]}"; do
 
