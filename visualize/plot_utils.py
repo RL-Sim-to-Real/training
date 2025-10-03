@@ -48,7 +48,7 @@ def plot_group_results(run_dfs, tags, sub_plot, rg_names:list[str], color="", bi
             rep_steps = np.array([steps_arr[g * bin_size] if g * bin_size < n else steps_arr[-1] for g in groups])
 
         final_vals = binned_df.apply(lambda col: col.dropna().iloc[-1] if col.dropna().size else np.nan)
-
+        print(final_vals)
         med = final_vals.median()
         med_col = final_vals.subtract(med).abs().idxmin()    
 
