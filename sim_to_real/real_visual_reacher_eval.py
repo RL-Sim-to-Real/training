@@ -318,7 +318,7 @@ def make_cube_upright(env, pose_ee, angle, angle_180):
     # print(f'ee_angle_flipped: {ee_angle_flipped}')
     # print(f'rotated_ee_angle: {rotated_ee_angle}')
     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
-    cube_pos[2] = grasp_height + 0.03
+    cube_pos[2] = grasp_height + 0.028
     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
     env.open_gripper()
     pose_ee[:2] = cube_pos[:2]
@@ -396,7 +396,8 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'joint_torque',
-    ][2]
+    ][1]
+    vel_threshold = -0.2
     use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
     # action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
@@ -414,6 +415,9 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
 
     trial_length = 60
     for i in range(max_trials):
+        if i < 17:
+            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
+            continue
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
@@ -431,6 +435,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         env.open_gripper()
         action = np.zeros(agent.action_shape, dtype=np.float32)
         env.logger.clear()
+        # env.gripper.home_joints()
         while True:
             # action = action_array.copy()  # Copy the action from shared memory
             proprioception = None
@@ -456,17 +461,18 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.4 and not env.grasped): # grasp it only once
+            if (action[-1] < -0.2 and not env.grasped): # grasp it only once
                 print("attempting grasp")
                 env.grasped = env.grasp_object()
                 time.sleep(0.25)  # Wait for the gripper to close
-            if env.grasped and action[-1] >= 0.4:
+            if env.grasped and action[-1] >= 0.9:
                 env.open_gripper()
                 env.grasped = False
                 time.sleep(0.25)
             
             # reopen gripper if grasp was unsuccessful
             fingertip_width = env.get_fingertip_width()
+            print('fingertip width:', fingertip_width)
             if env.grasped and fingertip_width < 0.035:
                 print('unsuccessful grasp, opening gripper')
                 env.gripper.stop_action()
@@ -488,9 +494,12 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             if time.time() - t_start > trial_length:
                 print(f"---- Trial {i}: Timeout")
                 break
-
+            if ee_pos[0] < 0.3:
+                print(f"---- Trial {i}: Robot moved out of workspace")
+                break
+        # print(env.logger.metrics)
         env.logger.metrics[-1]['success'] = success
-
+        env.logger.metrics[-1]['trial time'] = time.time() - t_start
         # put the cube back down
         if env.grasped:
             target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.08])  # Keep x, y the same and set z to 0.02
@@ -543,7 +552,7 @@ def _jnt_vel_range():
 
 
 def main():
-    record_video = True
+    record_video = False
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -569,12 +578,11 @@ def main():
     # c = threading.Thread(target=rs_camera_thread, args=(image_array,), daemon=True)
     # c.start()  # Start the camera process
     # p.start()
-    # input("Press Enter to start the control loop...")
 
     # main loop
-    fps = 60
+    fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 1, None
+    n_processes, max_trials, trial_process = 0, 20, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
