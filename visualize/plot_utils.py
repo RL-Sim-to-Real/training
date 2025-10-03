@@ -22,7 +22,7 @@ tb_tags_list = [
 ]
 
 
-def plot_group_results(run_dfs, tags, sub_plot, rg_names:list[str], color="", bin_size=5):
+def plot_group_results(run_dfs, tags, sub_plot, rg_names:list[str], color="", bin_size=100):
     fig, axes = sub_plot
     sns.set_style("white")
     tags = tb_tags_list  # ['episode/success', 'episode/sum_reward', 'episode/floor_collision', 'episode/jerk']
@@ -37,6 +37,7 @@ def plot_group_results(run_dfs, tags, sub_plot, rg_names:list[str], color="", bi
         df_tag = df_tag.sort_index()
         n = len(df_tag)
         print(f"Processing tag '{tag}' with {n} rows")
+        print(bin_size)
         if n <= bin_size:
             binned_df = df_tag.copy()
             rep_steps = df_tag.index.to_numpy()
