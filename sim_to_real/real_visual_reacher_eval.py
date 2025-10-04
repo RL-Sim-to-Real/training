@@ -167,7 +167,7 @@ def agent_process(action_name, action_shape, action_dtype,
             key, _ = jax.random.split(key)
             obs = {'pixels/view_0': img_array.copy()}
             if 'prop' in policy_fn:
-                obs['_prop'] = np.array([0.0]*24, dtype=np.float32)
+                obs['_prop'] = np.array([0.0]*20, dtype=np.float32)
             t0 = time.time()
             action, _ = jit_inference_fn(obs, key) # imperical inference time is 0.016
             print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
@@ -396,8 +396,8 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'joint_torque',
-    ][1]
-    vel_threshold = -0.2
+    ][0]
+
     use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
     # action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
@@ -415,9 +415,9 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
 
     trial_length = 60
     for i in range(max_trials):
-        if i < 17:
-            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
-            continue
+        # if i < 15:
+        #     np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
+        #     continue
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
@@ -582,7 +582,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 20, None
+    n_processes, max_trials, trial_process = 0, 15, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
