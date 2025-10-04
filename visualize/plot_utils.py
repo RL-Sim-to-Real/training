@@ -22,7 +22,7 @@ tb_tags_list = [
 ]
 
 
-def plot_group_results(run_dfs, tags, sub_plot, rg_names:list[str], color="", bin_size=100):
+def plot_group_results(run_dfs, tags, sub_plot, rg_names:list[str], color="", bin_size=20):
     fig, axes = sub_plot
     sns.set_style("white")
     tags = tb_tags_list  # ['episode/success', 'episode/sum_reward', 'episode/floor_collision', 'episode/jerk']
