@@ -108,7 +108,7 @@ class Agent():
 
     def get_action(self, proprioception=None):
         self.key, _ = jax.random.split(self.key)
-        obs = {'pixels/view_0': self.img_array.copy()}
+        obs = {'pixels/view_0': self.img_array.copy() / 255.0}
         if self.use_prop:
             obs['_prop'] = proprioception
         t0 = time.time()
@@ -165,9 +165,9 @@ def agent_process(action_name, action_shape, action_dtype,
     try:
         while True:
             key, _ = jax.random.split(key)
-            obs = {'pixels/view_0': img_array.copy()}
+            obs = {'pixels/view_0': img_array.copy() /255.0}
             if 'prop' in policy_fn:
-                obs['_prop'] = np.array([0.0]*20, dtype=np.float32)
+                obs['_prop'] = np.array([0.0]*(16 + action_shape), dtype=np.float32)
             t0 = time.time()
             action, _ = jit_inference_fn(obs, key) # imperical inference time is 0.016
             print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
@@ -396,7 +396,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'joint_torque',
-    ][0]
+    ][1]
 
     use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
@@ -415,9 +415,9 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
 
     trial_length = 60
     for i in range(max_trials):
-        # if i < 15:
-        #     np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
-        #     continue
+        if i < 14:
+            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
+            continue
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
