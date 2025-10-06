@@ -396,7 +396,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'joint_torque',
-    ][1]
+    ][0]
 
     use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
@@ -415,9 +415,9 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
 
     trial_length = 60
     for i in range(max_trials):
-        if i < 14:
-            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
-            continue
+        # if i < 14:
+        #     np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
+        #     continue
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
