@@ -396,7 +396,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'joint_torque',
-    ][0]
+    ][2]
 
     use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
@@ -552,7 +552,7 @@ def _jnt_vel_range():
 
 
 def main():
-    record_video = False
+    record_video = True
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -582,7 +582,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 15, None
+    n_processes, max_trials, trial_process = 0, 1, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
