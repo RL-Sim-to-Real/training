@@ -4,7 +4,7 @@ export MUJOCO_GL=egl
 
 
 ENV_NAME="PandaPushCube"
-NUM_TIMESTEPS=20_000_000
+NUM_TIMESTEPS=10_000_000
 SEEDS=(0)
 DEVICE_ID=0
 
@@ -45,7 +45,7 @@ for seed in "${SEEDS[@]}"; do
     # With propioception
     # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
     # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
-    python train_pick_cube_ppo.py \
+    python train_push_cube_ppo.py \
       --env_name="$ENV_NAME" \
       --num_timesteps="$NUM_TIMESTEPS" \
       --seed="$seed" \
@@ -54,6 +54,7 @@ for seed in "${SEEDS[@]}"; do
       --use_tb \
       --vision \
       --proprioception \
+      --log_training_metrics \
       --device_id="$DEVICE_ID" \
       --action_scale="${action_scales[$i]}"
     ((i++))
