@@ -3,20 +3,20 @@ export DISPLAY=${DISPLAY:-:0}
 export MUJOCO_GL=egl
 
 
-ENV_NAME="PandaPickCubeCartesianModified"
+ENV_NAME="PandaPickCubeCartesian3D"
 NUM_TIMESTEPS=20_000_000
-SEEDS=(0 1 2 3 4 5 6 7 8 9)
-DEVICE_ID=1
+SEEDS=(0)
+DEVICE_ID=0
 
 # Only include compatible pairs here:
 
 PAIRS=(
-  # "velocity joint"
+  "velocity joint"
   # "torque joint"
   # "position cartesian_increment"
-  "position joint_increment"
+  # "position joint_increment"
 )
-action_scales=(0.05 0.05 0.05 0.05)
+action_scales=(1.0 0.05 0.05 0.05)
 
 for seed in "${SEEDS[@]}"; do
 
@@ -52,7 +52,6 @@ for seed in "${SEEDS[@]}"; do
       --actuator="$actuator" \
       --action="$action" \
       --use_tb \
-      --log_training_metrics \
       --vision \
       --proprioception \
       --device_id="$DEVICE_ID" \

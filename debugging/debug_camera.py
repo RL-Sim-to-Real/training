@@ -30,7 +30,7 @@ np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
 
 
-env_name = "PandaPickCubeCartesianModified"
+env_name = "PandaPickCubeCartesian3D"
 env_cfg = manipulation.get_default_config(env_name)
 
 num_envs = 1

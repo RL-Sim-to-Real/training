@@ -78,7 +78,7 @@ import shutil
 
 _ENV_NAME = flags.DEFINE_string(
     "env_name",
-    "PandaPickCubeCartesian3D",
+    "PandaPushCube",
     f"Name of the environment. One of {', '.join(registry.ALL_ENVS)}",
 )
 _VISION = flags.DEFINE_boolean("vision", True, "Use vision input")

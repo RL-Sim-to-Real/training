@@ -66,7 +66,7 @@ class Agent():
         self.control_mode = control_mode
         self.use_prop = use_prop
 
-        env_name = "PandaPickCubeCartesianModified"
+        env_name = "PandaPickCubeCartesian3D"
 
         # Rasterizer is less feature-complete than ray-tracing backend but stable
         layer_size = 256
@@ -127,7 +127,7 @@ def agent_process(action_name, action_shape, action_dtype,
                   image_name, image_shape, image_dtype):
     np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
-    env_name = "PandaPickCubeCartesianModified"
+    env_name = "PandaPickCubeCartesian3D"
 
     # Rasterizer is less feature-complete than ray-tracing backend but stable
     layer_size = 256

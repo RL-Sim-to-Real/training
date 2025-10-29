@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 python -u train_pick_cube_ppo.py \
-    --env_name="PandaPickCubeCartesianModified" \
+    --env_name="PandaPickCubeCartesian3D" \
     --num_timesteps="1_000" \
     --seed="1" \
     --actuator="position" \
