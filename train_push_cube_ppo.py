@@ -70,7 +70,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="jax")
 # Suppress UserWarnings from absl (used by JAX and TensorFlow)
 warnings.filterwarnings("ignore", category=UserWarning, module="absl")
 
-from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision_modified as randomize
+from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision_push as randomize
 
 # save final policy params
 import pickle
