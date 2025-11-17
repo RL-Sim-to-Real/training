@@ -62,4 +62,6 @@ Start by installing Madrona first and ensure you have `jax[cuda_local]<=0.5.3` a
 module load StdEnv/2023 python/3.11 mujoco/3.3.0 cuda/12.2
 virtualenv --no-download --clear ~/ENV && source ~/ENV/bin/activate
 
+salloc --time=01:00:00 --gres=gpu:1 --mem=32G --cpus-per-task=4 --account=aip-ashique
+
 ```
