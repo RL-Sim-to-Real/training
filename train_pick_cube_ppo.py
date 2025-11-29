@@ -371,6 +371,9 @@ def main(argv):
   filename = f"params_general_{_ACTION_SPACE.value}-{_ACTUATOR.value}"
   if _PROPRIOCEPTION.value:
     filename += "_prop"
+  
+  filename += f"_seed{_SEED.value}"
+  
   filename += ".pkl"
   with open(logdir / filename, "wb") as f:
     pickle.dump(params, f)

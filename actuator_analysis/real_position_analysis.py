@@ -18,13 +18,13 @@ def parse_args():
     parser.add_argument(
         "--k",
         type=float,
-        default=1000.0,
+        default=200.0,
         help="proportional gain",
     )
     parser.add_argument(
         "--d",
         type=float,
-        default=20.0,
+        default=50.0,
         help="derivative gain",
     )
     args = parser.parse_args()
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     positions = []
 
     args = parse_args()
-    k = [args.k, 1000.0, 1000.0, 800.0, 300.0, 200.0, 50.0] 
+    k = [args.k, 200.0, 200.0, 200.0, 300.0, 200.0, 50.0] 
     d = [args.d, 50.0, 50.0, 20.0, 20.0, 20.0, 10.0]
     env = FrankaPickCubeCartesian(camera_index=0, control_mode="joint_position", k=k, d=d) 
     env.robot_status.enable()
@@ -50,10 +50,10 @@ if __name__ == "__main__":
 
     obs = env.get_state()
     q_pos = obs["joints"].copy()
-
+    joint = 2
 
     # ensure first joint is at zero
-    q_pos[0] = 0.0
+    q_pos[joint] = 0.0
     print(q_pos)
     for _ in range(100):
         env.robot.set_joint_positions(dict(zip(env.joint_names, q_pos)))
@@ -74,19 +74,20 @@ if __name__ == "__main__":
     # print(k)
     # env.controller_param_config_client.set_controller_gains(k,d)
     print(q_pos)
-    q_pos[0] += delta
+    q_pos[joint] += delta
     q_d = np.zeros_like(q_pos)
     for _ in range(100):
         env.robot.set_joint_positions_velocities(q_pos,  q_d)
+        # env.robot.set_joint_positions(dict(zip(env.joint_names, q_pos)))
         # env.apply_joint_vel(q_d)
         env.rate.sleep()
         obs = env.get_state()
-        positions.append(obs["joints"][0])
-        delta = -1 * delta
-        q_pos[0] += delta
+        positions.append(obs["joints"][joint])
+        # delta = -1 * delta
+        # q_pos[0] += delta
     
 
 
-    df = pd.DataFrame(positions, columns=["joint1_pos"])
-    df.to_csv(f"joint1_positions_real.csv", index=False)
+    df = pd.DataFrame(positions, columns=[f"joint{joint+1}_pos"])
+    df.to_csv(f"joint{joint+1}_positions_real.csv", index=False)
     env.close()

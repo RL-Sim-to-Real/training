@@ -76,6 +76,7 @@ class Agent():
             policy_hidden_layer_sizes=[layer_size, layer_size, layer_size],
             value_hidden_layer_sizes= [layer_size, layer_size, layer_size],
             activation=linen.relu, # only works with default activation right now
+            # activation=linen.swish,
             normalise_channels=True,
         )
 
@@ -87,7 +88,7 @@ class Agent():
         policy_fn = {
             'cartesian_position': "test_policies/params_general_cartesian_increment-position.pkl",
             'joint_position': "test_policies/params_general_joint_increment-position.pkl",
-            'joint_velocity': "thesis_policies/params_general_joint-velocity.pkl",
+            'joint_velocity': "thesis_policies/pick/params_general_joint-velocity.pkl",
             'joint_torque': "test_policies/params_general_joint-torque.pkl",
         }[control_mode]
         if use_prop:
@@ -418,6 +419,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         # if i < 14:
         #     np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
         #     continue
+        # if not env.grasped:
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
@@ -490,7 +492,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             print(f"Time taken for one step: {end - start:.3f} seconds")
 
             fingertip_width = env.get_fingertip_width()
-            if env.grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
+            if env.grasped and fingertip_width > 0.035 and np.abs(ee_pos[2] - 0.2) < 0.03:
                 print(f"---- Trial {i}: Complete")
                 success = True
                 break
@@ -506,7 +508,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         env.logger.metrics[-1]['trial time'] = time.time() - t_start
         # put the cube back down
         if env.grasped:
-            target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.08])  # Keep x, y the same and set z to 0.02
+            target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.06])  # Keep x, y the same and set z to 0.02
             env.move_to_pose_ee(target_x_y_z)
         env.open_gripper()
 
@@ -605,7 +607,7 @@ def main():
 
 
         
-        img = img[:, 120:]
+        # img = img[:, 100:]
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
         # H, W = img.shape[:2]
