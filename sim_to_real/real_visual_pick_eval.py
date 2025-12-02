@@ -66,7 +66,7 @@ class Agent():
         self.control_mode = control_mode
         self.use_prop = use_prop
 
-        env_name = "PandaPickCubeCartesian3D"
+        env_name = "PandaPickCuboid"
 
         # Rasterizer is less feature-complete than ray-tracing backend but stable
         layer_size = 256
@@ -428,10 +428,11 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         # reset the robot joints to initial position again
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
-
+    
         success = False
         env.grasped = False
         ee_pos,_ = env.reset()
+
         t_start = time.time()
         print("Resetting cube position...")
         env.open_gripper()
@@ -467,9 +468,10 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.0 and not env.grasped): # grasp it only once
+            if (action[-1] < -0.0): # grasp it only once
                 print("attempting grasp")
                 env.grasped = env.grasp_object()
+                print("grasped:", env.grasped)
                 time.sleep(0.25)  # Wait for the gripper to close
             if env.grasped and action[-1] >= 0.9:
                 env.open_gripper()
@@ -588,7 +590,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 15, None
+    n_processes, max_trials, trial_process = 0, 10, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
@@ -607,7 +609,7 @@ def main():
 
 
         
-        # img = img[:, 100:]
+        img = img[:, 120:]
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
         # H, W = img.shape[:2]

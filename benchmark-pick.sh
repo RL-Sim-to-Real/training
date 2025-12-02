@@ -3,21 +3,23 @@ export DISPLAY=${DISPLAY:-:0}
 export MUJOCO_GL=egl
 
 
-ENV_NAME="PandaPickCubeCartesian3D"
-NUM_TIMESTEPS=15_000_000
-SEEDS=({0..10})
+ENV_NAME="PandaPickCuboid"
+NUM_TIMESTEPS=5_000_000
+SEEDS=({5..5})
 # SEEDS=(0 1 2 3 4 5)
 DEVICE_ID=0
 
 # Only include compatible pairs here:
 
 PAIRS=(
-  "velocity joint"
-  # "torque joint"
-  # "position cartesian_increment"
-  # "position joint_increment"
+  "velocity joint 1"
+  # "position cartesian_increment 0.05"
+  # "position joint_increment 0.05"
+  # "velocity cartesian_increment 0.05"
+  # "velocity joint_increment 0.05"
+  # "position joint 1" # maps velocity action to position actuator
 )
-action_scales=(1.0 0.05 0.05 0.05)
+# action_scales=(0.05 0.05 0.05 0.05)
 
 for seed in "${SEEDS[@]}"; do
 
@@ -26,6 +28,7 @@ for seed in "${SEEDS[@]}"; do
     set -- $pair
     actuator="$1"
     action="$2"
+    action_scale="$3"
     echo "Running actuator=$actuator action=$action seed=$seed"
 
 
@@ -57,7 +60,7 @@ for seed in "${SEEDS[@]}"; do
       --proprioception \
       --log_training_metrics \
       --device_id="$DEVICE_ID" \
-      --action_scale="${action_scales[$i]}"
+      --action_scale="$action_scale"
     ((i++))
   done
 

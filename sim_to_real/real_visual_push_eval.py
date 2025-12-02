@@ -66,7 +66,7 @@ class Agent():
         self.control_mode = control_mode
         self.use_prop = use_prop
 
-        env_name = "PandaPickCubeCartesian3D"
+        env_name = "PandaPushCube"
 
         # Rasterizer is less feature-complete than ray-tracing backend but stable
         layer_size = 256
