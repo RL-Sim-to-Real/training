@@ -409,7 +409,7 @@ def main(argv):
           rollout.append(keep_until(state, to_keep))
 
   render_every = 1
-  frames = env.render([unvmap(s) for s in rollout][::render_every])
+  frames = env.render([unvmap(s) for s in rollout][::render_every], width=640, height=480)
 
   video_path = logdir / "rollout.mp4"
   media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
