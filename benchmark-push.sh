@@ -3,20 +3,20 @@ export DISPLAY=${DISPLAY:-:0}
 export MUJOCO_GL=egl
 
 
-ENV_NAME="PandaPushCube"
-NUM_TIMESTEPS=10_000_000
-SEEDS=({0..30})
+ENV_NAME="PandaPushCuboid"
+NUM_TIMESTEPS=2_000_000
+SEEDS=({0..0})
 DEVICE_ID=0
 
 # Only include compatible pairs here:
 
 PAIRS=(
-  "velocity joint"
+  "velocity joint 1"
   # "torque joint"
   # "position cartesian_increment"
   # "position joint_increment"
 )
-action_scales=(1.0 0.05 0.05 0.05)
+# action_scales=(1.0 0.05 0.05 0.05)
 
 for seed in "${SEEDS[@]}"; do
 
@@ -25,6 +25,7 @@ for seed in "${SEEDS[@]}"; do
     set -- $pair
     actuator="$1"
     action="$2"
+    action_scale="$3"
     echo "Running actuator=$actuator action=$action seed=$seed"
 
 
@@ -56,7 +57,7 @@ for seed in "${SEEDS[@]}"; do
       --proprioception \
       --log_training_metrics \
       --device_id="$DEVICE_ID" \
-      --action_scale="${action_scales[$i]}"
+      --action_scale="$action_scale"
     ((i++))
   done
 

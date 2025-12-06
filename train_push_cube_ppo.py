@@ -78,7 +78,7 @@ import shutil
 
 _ENV_NAME = flags.DEFINE_string(
     "env_name",
-    "PandaPushCube",
+    "PandaPushCuboid",
     f"Name of the environment. One of {', '.join(registry.ALL_ENVS)}",
 )
 _VISION = flags.DEFINE_boolean("vision", True, "Use vision input")
@@ -217,9 +217,9 @@ def main(argv):
       "vision_config.render_batch_size": num_envs,
       "vision_config.render_width": 64,
       "vision_config.render_height": 64,
-      "box_init_range": 0.1, # +- 10 cm
+      "box_init_range": 0.03, # +- 5 cm
       "action_history_length": 5,
-      "success_threshold": 0.03,  
+      "success_threshold": 0.01,  
       "action_scale": _ACTION_SCALE.value, 
       "actuator": _ACTUATOR.value,
       "action": _ACTION_SPACE.value,

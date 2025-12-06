@@ -37,7 +37,7 @@ from mujoco_playground import manipulation
 from mujoco_playground import wrapper
 from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vision as randomize
 from mujoco_playground.config import manipulation_params
-from get_policy_network import make_inference_fn #TODO: Figure this out
+from get_policy_network_push import make_inference_fn #TODO: Figure this out
 import pickle
 
 import json
@@ -45,6 +45,7 @@ from multiprocessing import shared_memory, Process, set_start_method
 import threading
 import pyrealsense2 as rs
 from pathlib import Path
+from typing import Dict, Tuple
 
 from franka_real.FrankaPushCube import FrankaPushCube
 from franka_real.FrankaEvalAutomator import FrankaEvalAutomator
@@ -66,7 +67,7 @@ class Agent():
         self.control_mode = control_mode
         self.use_prop = use_prop
 
-        env_name = "PandaPushCube"
+        env_name = "PandaPushCuboid"
 
         # Rasterizer is less feature-complete than ray-tracing backend but stable
         layer_size = 256
@@ -233,37 +234,37 @@ def get_birds_eye_view(point_cam_array, env):
         # time.sleep(1)
     return angle, angle_180, is_square, pose_ee
 
-def make_cube_upright(env, pose_ee, angle, angle_180):
-    grasp_height = 0.04
-    grasp_offset = 0 # degrees
-    ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
-    cube_ee_angle = ee_angle.copy()
-    # cube_ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
-    cube_ee_angle[2] += -(angle_180 - 90) * np.pi / 180.0
-    cube_ee_angle[1] -= grasp_offset * np.pi / 180.
-    env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
-    pose_ee[2] = grasp_height
-    pose_ee[0] -= 0.025 # offset to be above the cube center
-    env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
-    env.grasp_object()
-    pose_ee[2] = 0.3
-    ee_angle_flipped = ee_angle.copy()
-    ee_angle_flipped[2] -= np.pi
-    env.move_to_pose_ee(pose_ee)
-    # env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle_flipped)
-    # randomize the cube position
-    cube_pos = np.array([0.48, 0.0, grasp_height + 0.04])
-    rotated_ee_angle = ee_angle.copy()
+# def make_cube_upright(env, pose_ee, angle, angle_180):
+#     grasp_height = 0.04
+#     grasp_offset = 0 # degrees
+#     ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
+#     cube_ee_angle = ee_angle.copy()
+#     # cube_ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
+#     cube_ee_angle[2] += -(angle_180 - 90) * np.pi / 180.0
+#     cube_ee_angle[1] -= grasp_offset * np.pi / 180.
+#     env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
+#     pose_ee[2] = grasp_height
+#     pose_ee[0] -= 0.025 # offset to be above the cube center
+#     env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
+#     env.grasp_object()
+#     pose_ee[2] = 0.3
+#     ee_angle_flipped = ee_angle.copy()
+#     ee_angle_flipped[2] -= np.pi
+#     env.move_to_pose_ee(pose_ee)
+#     # env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle_flipped)
+#     # randomize the cube position
+#     cube_pos = np.array([0.48, 0.0, grasp_height + 0.04])
+#     rotated_ee_angle = ee_angle.copy()
 
-    rotated_ee_angle[1] += (90 - 10 - grasp_offset) * np.pi / 180.
+#     rotated_ee_angle[1] += (90 - 10 - grasp_offset) * np.pi / 180.
 
-    env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
-    cube_pos[2] = grasp_height + 0.028
-    env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
-    env.open_gripper()
-    pose_ee[:2] = cube_pos[:2]
-    pose_ee[2] = 0.2
-    env.move_to_pose_ee(pose_ee)
+#     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
+#     cube_pos[2] = grasp_height + 0.028
+#     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
+#     env.open_gripper()
+#     pose_ee[:2] = cube_pos[:2]
+#     pose_ee[2] = 0.2
+#     env.move_to_pose_ee(pose_ee)
 
 def put_cube_on_white_strip(env, angle, pose_ee):
     ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
@@ -278,7 +279,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     env.move_to_pose_ee(pose_ee)
     # time.sleep(1)
     # randomize the cube position8
-    cube_pos = np.array([0.61, np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
+    cube_pos = np.array([np.random.uniform(0.60, 0.60), np.random.uniform(-0.03, 0.03), grasp_height + 0.005])
     # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
     print(f"Moving cube to new position: {cube_pos[:2]}")
     env.move_to_pose_ee(cube_pos)
@@ -290,7 +291,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     pose_ee[:2] = cube_pos[:2]
     pose_ee[2] = 0.2
     env.move_to_pose_ee(pose_ee)
-    # time.sleep(1)
+    # time.sleep(1) 
 
 
 def get_point_base(point_cam, env):
@@ -320,12 +321,12 @@ def get_point_base(point_cam, env):
 
 def reset_cube_position(point_cam_array, env, target_joints):
     angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
-    while is_square < 0.5:
-        print("Cube is knocked over")
-        make_cube_upright(env, pose_ee, angle, angle_180)
-        env.move_to_joint_positions(target_joints)
-        env.apply_joint_vel(np.zeros((7,)))
-        angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
+    # while is_square < 0.5: # don't need this
+    #     print("Cube is knocked over")
+    #     make_cube_upright(env, pose_ee, angle, angle_180)
+    #     env.move_to_joint_positions(target_joints)
+    #     env.apply_joint_vel(np.zeros((7,)))
+    #     angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
 
     put_cube_on_white_strip(env, angle, pose_ee)
 
@@ -370,7 +371,88 @@ def has_contact(img: np.ndarray) -> bool:
     print(f"Touching: {touching}")
     return touching
 
-def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_name, point_cam_shape, point_cam_dtype, image_name, image_shape, image_dtype, has_contact_name, has_contact_shape, has_contact_dtype):
+
+def is_cube_close_to_tape(
+    img_rgb: np.ndarray,
+    close_frac: float = 0.25,   # fraction of tape thickness used as threshold
+    min_thr_px: int = 6,        # minimum pixel threshold
+    annotate_path: str = None   # if set, save an annotated PNG here
+) -> Dict:
+    """
+    Returns:
+      {
+        'cube_center': (x, y),
+        'tape_center': (x, y),
+        'vertical_distance_pixels': int,
+        'euclidean_distance_pixels': int,
+        'tape_height_pixels': int,
+        'threshold_pixels': int,
+        'is_close': bool,
+        'annotated_image_path': str or None
+      }
+    """
+
+
+    hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
+
+    # --- Detect red cube (handle hue wrap-around) ---
+    # Tune S/V floors if lighting changes
+    lower_red1 = np.array([0,   90,  90], np.uint8)
+    upper_red1 = np.array([10, 255, 255], np.uint8)
+    lower_red2 = np.array([170, 90,  90], np.uint8)
+    upper_red2 = np.array([180, 255, 255], np.uint8)
+
+    mask_r = cv2.inRange(hsv, lower_red1, upper_red1) | cv2.inRange(hsv, lower_red2, upper_red2)
+    mask_r = cv2.morphologyEx(mask_r, cv2.MORPH_OPEN, np.ones((5,5), np.uint8), iterations=1)
+    mask_r = cv2.morphologyEx(mask_r, cv2.MORPH_CLOSE, np.ones((5,5), np.uint8), iterations=2)
+
+    cnts_r, _ = cv2.findContours(mask_r, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts_r:
+        return {'is_close': False}  # assume not close if no cube found
+    cube_cnt = max(cnts_r, key=cv2.contourArea)
+    M = cv2.moments(cube_cnt)
+    if M['m00'] == 0:
+        raise RuntimeError("Degenerate red contour (zero area).")
+    cx_cube = int(M['m10'] / M['m00'])
+    cy_cube = int(M['m01'] / M['m00'])
+
+    # --- Detect white tape (low saturation, high value) ---
+    lower_white = np.array([0,   0, 180], np.uint8)
+    upper_white = np.array([179, 40, 255], np.uint8)
+    mask_w = cv2.inRange(hsv, lower_white, upper_white)
+    mask_w = cv2.morphologyEx(mask_w, cv2.MORPH_CLOSE, np.ones((9,9), np.uint8), iterations=2)
+
+    cnts_w, _ = cv2.findContours(mask_w, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts_w:
+        return {'is_close': False}
+    tape_cnt = max(cnts_w, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(tape_cnt)
+    cx_tape = x + w // 2
+    cy_tape = y + h // 2
+
+    # --- Distances & decision ---
+    dy = abs(cy_cube - cy_tape)
+    euclid = int(np.hypot(cx_cube - cx_tape, cy_cube - cy_tape))
+    thr = int(max(min_thr_px, close_frac * h))
+    is_close = dy <= thr
+
+    return {
+        "cube_center": (cx_cube, cy_cube),
+        "tape_center": (cx_tape, cy_tape),
+        "vertical_distance_pixels": int(dy),
+        "euclidean_distance_pixels": int(euclid),
+        "tape_height_pixels": int(h),
+        "threshold_pixels": int(thr),
+        "is_close": bool(is_close),
+    }
+
+def run_trials(max_trials, 
+               action_name, 
+               action_shape, 
+               action_dtype, 
+               point_cam_name, 
+               point_cam_shape, 
+               point_cam_dtype, image_name, image_shape, image_dtype, has_contact_name, has_contact_shape, has_contact_dtype):
     save_logs = True
     control_mode = [
         'cartesian_position',
@@ -389,9 +471,8 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
     point_cam_shm = shared_memory.SharedMemory(name=point_cam_name)
     point_cam_array = np.ndarray(point_cam_shape, dtype=point_cam_dtype, buffer=point_cam_shm.buf)
 
-    image_shm = shared_memory.SharedMemory(name=image_name)
-    img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
-
+    # image_shm = shared_memory.SharedMemory(name=image_name)
+    # img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
     has_contact_shm = shared_memory.SharedMemory(name=has_contact_name)
     has_contact_array = np.ndarray(has_contact_shape, dtype=has_contact_dtype, buffer=has_contact_shm.buf)
 
@@ -403,10 +484,12 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
     trial_length = 60
     displacement = 0
     for i in range(max_trials):
-
-        env.open_gripper()
+        has_contact_array[0] = 0
+        
         env.move_to_joint_positions(target_joints)
+        env.open_gripper()
         env.apply_joint_vel(np.zeros((7,)))
+        print("Resetting cube position...")
         reset_cube_position(point_cam_array, env, target_joints)
 
         # reset the robot joints to initial position again
@@ -415,14 +498,16 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
 
         success = False
         env.grasped = False
+        env.close_gripper()
         ee_pos,_ = env.reset()
         t_start = time.time()
-        print("Resetting cube position...")
-        env.close_gripper()
+
+
         action = np.zeros(agent.action_shape, dtype=np.float32)
         env.logger.clear()
         init_pose_ee = ee_pos.copy()
         print(ee_pos)
+        env.close_gripper()
         # env.gripper.home_joints()
         while True:
             # action = action_array.copy()  # Copy the action from shared memory
@@ -460,13 +545,13 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             ee_pos = env.step(action)
             end = time.time()
             print(f"Time taken for one step: {end - start:.3f} seconds")
-            if has_contact_array[0]:
-                displacement = np.linalg.norm(ee_pos[0] - init_pose_ee[0])
-                if displacement > 0.1:
-                    success = True
-                    print(f"---- Trial {i}: Success! Displacement: {displacement:.3f} m")
-                    break
-                
+            print(has_contact_array[0])
+            if has_contact_array[0] > 0:
+                success = True 
+                print(f"---- Trial {i}: Success! Displacement: {displacement:.3f} m")
+                time.sleep(1)
+                break
+            
             # fingertip_width = env.get_fingertip_width()
             # if env.grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
             #     print(f"---- Trial {i}: Complete")
@@ -482,11 +567,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         # print(env.logger.metrics)
         env.logger.metrics[-1]['success'] = success
         env.logger.metrics[-1]['trial time'] = time.time() - t_start
-        # put the cube back down
-        if env.grasped:
-            target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.08])  # Keep x, y the same and set z to 0.02
-            env.move_to_pose_ee(target_x_y_z)
-        env.open_gripper()
+
 
         # save logs
         if save_logs:
@@ -578,15 +659,15 @@ def main():
             continue
 
         img = np.asanyarray(color_frame.get_data())
-        original_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         # img = np.asanyarray(depth_frame.get_data())
         # img = cv2.convertScaleAbs(img, alpha=0.10)
         # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
-        has_contact_array[0] = 1 if has_contact(original_img[:-50, :, :].copy()) else 0
+        
 
         
         img = img[:, 120:]
-        print(img.shape)
+        original_img = img.copy()
+        has_contact_array[0] = 1 if is_cube_close_to_tape(cv2.cvtColor(img, cv2.COLOR_BGR2RGB).copy())['is_close'] else 0 # expects RGB image
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
         # H, W = img.shape[:2]
