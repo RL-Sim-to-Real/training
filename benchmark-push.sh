@@ -4,7 +4,7 @@ export MUJOCO_GL=egl
 
 
 ENV_NAME="PandaPushCuboid"
-NUM_TIMESTEPS=2_000_000
+NUM_TIMESTEPS=20_000_000
 SEEDS=({0..0})
 DEVICE_ID=0
 
@@ -13,8 +13,8 @@ DEVICE_ID=0
 PAIRS=(
   "velocity joint 1"
   # "torque joint"
-  # "position cartesian_increment"
-  # "position joint_increment"
+  # "position cartesian_increment 0.05"
+  # "position joint_increment 0.05"
 )
 # action_scales=(1.0 0.05 0.05 0.05)
 
@@ -29,23 +29,12 @@ for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"
 
 
-    # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
-    # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
-    # python train_pick_cube_ppo.py \
-    #   --env_name="$ENV_NAME" \
-    #   --num_timesteps="$NUM_TIMESTEPS" \
-    #   --seed="$seed" \
-    #   --actuator="$actuator" \
-    #   --action="$action" \
-    #   --use_tb \
-    #   --log_training_metrics \
-    #   --vision \
-    #   --device_id=1 \
-    #   --action_scale="${action_scales[$i]}" 
-
     # With propioception
     # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
     # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
+
+    MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
+    MADRONA_BVH_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache \
     python train_push_cube_ppo.py \
       --env_name="$ENV_NAME" \
       --num_timesteps="$NUM_TIMESTEPS" \

@@ -204,7 +204,7 @@ def main(argv):
   env_cfg = manipulation.get_default_config(env_name)
 
   num_envs = 1024
-  episode_length = int(4 / env_cfg.ctrl_dt)
+  episode_length = int(10 / env_cfg.ctrl_dt)
   if _PROPRIOCEPTION.value:
     print("Using proprioception in the observation space.")
   # Rasterizer is less feature-complete than ray-tracing backend but stable
@@ -217,6 +217,7 @@ def main(argv):
       "vision_config.render_batch_size": num_envs,
       "vision_config.render_width": 64,
       "vision_config.render_height": 64,
+      "frame_stack_size": 3, # should be equivalent to basic case
       "box_init_range": 0.03, # +- 5 cm
       "action_history_length": 5,
       "success_threshold": 0.01,  
@@ -358,6 +359,7 @@ def main(argv):
       **dict(ppo_params),
       deterministic_eval = True,
       progress_fn=progress,
+      save_checkpoint_path=ckpt_path
 
   )
 
@@ -391,28 +393,29 @@ def main(argv):
 
   rng = jax.random.PRNGKey(123)
   rollout = []
-  n_episodes = 1
+  n_episodes = 2
   to_keep = 256
 
   def keep_until(state, i):
       return jax.tree.map(lambda x: x[:i], state)
 
-  for _ in range(n_episodes):
-      key_rng = jax.random.split(rng, num_envs)
-      state = jit_reset(key_rng)
-      rollout.append(keep_until(state, to_keep))
-      for i in tqdm(range(env_cfg.episode_length)):
-          act_rng, rng = jax.random.split(rng)
-          act_rng = jax.random.split(act_rng, num_envs)
-          ctrl, _ = jit_inference_fn(state.obs, act_rng)
-          state = jit_step(state, ctrl)
-          rollout.append(keep_until(state, to_keep))
+  for episode in range(n_episodes):
+    key_rng = jax.random.split(rng, num_envs)
+    state = jit_reset(key_rng)
+    rollout.append(keep_until(state, to_keep))
+    for i in tqdm(range(env_cfg.episode_length)):
+        act_rng, rng = jax.random.split(rng)
+        act_rng = jax.random.split(act_rng, num_envs)
+        ctrl, _ = jit_inference_fn(state.obs, act_rng)
+        state = jit_step(state, ctrl)
+        rollout.append(keep_until(state, to_keep))
 
-  render_every = 1
-  frames = env.render([unvmap(s) for s in rollout][::render_every])
+    render_every = 1
+    frames = env.render([unvmap(s) for s in rollout][::render_every], width=640, height=480)
 
-  video_path = logdir / "rollout.mp4"
-  media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
+    video_path = logdir / f"rollout-{episode}.mp4"
+    media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
+    rollout = []
   print(f"Rollout video saved as '{video_path}'.")
   print("Rollout video saved as 'rollout.mp4'.")
 
