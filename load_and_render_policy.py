@@ -154,7 +154,7 @@ def main(argv):
   env_cfg = manipulation.get_default_config(env_name)
 
   num_envs = 1
-  episode_length = int(4 / env_cfg.ctrl_dt)
+  episode_length = int(10 / env_cfg.ctrl_dt)
   if _PROPRIOCEPTION.value:
     print("Using proprioception in the observation space.")
   # Rasterizer is less feature-complete than ray-tracing backend but stable
@@ -201,7 +201,7 @@ def main(argv):
 
   
    # === 1) Load trained params ===
-  f_path = "/home/nika/Desktop/Research/training/logs/PandaPushCuboid-joint-velocity-_prop-seed-0-arena/params_general_joint-velocity_prop.pkl"
+  f_path = "/home/nika/Desktop/Research/training/logs/PandaPushCuboid-joint-velocity-_prop-seed-0/params_general_joint-velocity_prop.pkl"
   with open(f_path, "rb") as f:
     params = pickle.load(f)
 

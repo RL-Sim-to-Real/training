@@ -412,9 +412,12 @@ def main(argv):
 
     render_every = 1
     frames = env.render([unvmap(s) for s in rollout][::render_every], width=640, height=480)
+    frames_wrist_camera = env.render([unvmap(s) for s in rollout][::render_every], camera="mounted")
 
     video_path = logdir / f"rollout-{episode}.mp4"
     media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
+    video_path = logdir / f"rollout-wrist-camera-{episode}.mp4"
+    media.write_video(video_path, frames_wrist_camera, fps=1.0 / env.dt / render_every)
     rollout = []
   print(f"Rollout video saved as '{video_path}'.")
   print("Rollout video saved as 'rollout.mp4'.")
