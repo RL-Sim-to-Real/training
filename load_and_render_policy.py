@@ -78,6 +78,9 @@ from mujoco_playground._src.manipulation.franka_emika_panda import randomize_vis
 import pickle
 import shutil
 
+os.environ["MADRONA_MWGPU_KERNEL_CACHE"] = "/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache"
+os.environ["MADRONA_BVH_KERNEL_CACHE"] = "/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache"
+
 _ENV_NAME = flags.DEFINE_string(
     "env_name",
     "PandaPushCuboid",

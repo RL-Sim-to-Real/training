@@ -217,7 +217,7 @@ def main(argv):
       "vision_config.render_batch_size": num_envs,
       "vision_config.render_width": 64,
       "vision_config.render_height": 64,
-      "frame_stack_size": 3, # should be equivalent to basic case
+      "frame_stack_size": 1, # should be equivalent to basic case
       "box_init_range": 0.03, # +- 5 cm
       "action_history_length": 5,
       "success_threshold": 0.01,  
