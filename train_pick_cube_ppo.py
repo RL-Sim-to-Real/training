@@ -350,7 +350,8 @@ def main(argv):
             f"{num_steps}: mean episode"
             f" reward={metrics['episode/sum_reward']:.3f}"
         )
-    
+  
+
   train_fn = functools.partial(
       ppo.train,
       seed=_SEED.value,
@@ -358,7 +359,7 @@ def main(argv):
       **dict(ppo_params),
       deterministic_eval = True,
       progress_fn=progress,
-
+      save_checkpoint_path=ckpt_path,
   )
 
 
@@ -386,38 +387,41 @@ def main(argv):
 
 
 
-  jit_reset = jax.jit(env.reset)
-  jit_step = jax.jit(env.step)
-  jit_inference_fn = jax.jit(make_inference_fn(params, deterministic=True))
+  skip_render = True
+  if not skip_render:
 
-  # Prepare for evaluation
+    jit_reset = jax.jit(env.reset)
+    jit_step = jax.jit(env.step)
+    jit_inference_fn = jax.jit(make_inference_fn(params, deterministic=True))
 
-  rng = jax.random.PRNGKey(123)
-  rollout = []
-  n_episodes = 1
-  to_keep = 256
+    # Prepare for evaluation
 
-  def keep_until(state, i):
-      return jax.tree.map(lambda x: x[:i], state)
+    rng = jax.random.PRNGKey(123)
+    rollout = []
+    n_episodes = 1
+    to_keep = 256
 
-  for _ in range(n_episodes):
-      key_rng = jax.random.split(rng, num_envs)
-      state = jit_reset(key_rng)
-      rollout.append(keep_until(state, to_keep))
-      for i in tqdm(range(env_cfg.episode_length)):
-          act_rng, rng = jax.random.split(rng)
-          act_rng = jax.random.split(act_rng, num_envs)
-          ctrl, _ = jit_inference_fn(state.obs, act_rng)
-          state = jit_step(state, ctrl)
-          rollout.append(keep_until(state, to_keep))
+    def keep_until(state, i):
+        return jax.tree.map(lambda x: x[:i], state)
 
-  render_every = 1
-  frames = env.render([unvmap(s) for s in rollout][::render_every], width=640, height=480)
+    for _ in range(n_episodes):
+        key_rng = jax.random.split(rng, num_envs)
+        state = jit_reset(key_rng)
+        rollout.append(keep_until(state, to_keep))
+        for i in tqdm(range(env_cfg.episode_length)):
+            act_rng, rng = jax.random.split(rng)
+            act_rng = jax.random.split(act_rng, num_envs)
+            ctrl, _ = jit_inference_fn(state.obs, act_rng)
+            state = jit_step(state, ctrl)
+            rollout.append(keep_until(state, to_keep))
 
-  video_path = logdir / "rollout.mp4"
-  media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
-  print(f"Rollout video saved as '{video_path}'.")
-  print("Rollout video saved as 'rollout.mp4'.")
+    render_every = 1
+    frames = env.render([unvmap(s) for s in rollout][::render_every], width=640, height=480)
+
+    video_path = logdir / "rollout.mp4"
+    media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
+    print(f"Rollout video saved as '{video_path}'.")
+    print("Rollout video saved as 'rollout.mp4'.")
 
 
 
