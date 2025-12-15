@@ -4,7 +4,7 @@ export MUJOCO_GL=egl
 
 
 ENV_NAME="PandaPickCuboid"
-NUM_TIMESTEPS=5_000_000
+NUM_TIMESTEPS=15_000_000
 SEEDS=({5..5})
 # SEEDS=(0 1 2 3 4 5)
 DEVICE_ID=0
@@ -12,12 +12,10 @@ DEVICE_ID=0
 # Only include compatible pairs here:
 
 PAIRS=(
+  "position cartesian_increment 0.05"
+  "velocity cartesian_increment 0.05"
   "velocity joint 1"
-  # "position cartesian_increment 0.05"
-  # "position joint_increment 0.05"
-  # "velocity cartesian_increment 0.05"
-  # "velocity joint_increment 0.05"
-  # "position joint 1" # maps velocity action to position actuator
+  "position joint_increment 0.05"
 )
 # action_scales=(0.05 0.05 0.05 0.05)
 
@@ -32,23 +30,9 @@ for seed in "${SEEDS[@]}"; do
     echo "Running actuator=$actuator action=$action seed=$seed"
 
 
-    # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
-    # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
-    # python train_pick_cube_ppo.py \
-    #   --env_name="$ENV_NAME" \
-    #   --num_timesteps="$NUM_TIMESTEPS" \
-    #   --seed="$seed" \
-    #   --actuator="$actuator" \
-    #   --action="$action" \
-    #   --use_tb \
-    #   --log_training_metrics \
-    #   --vision \
-    #   --device_id=1 \
-    #   --action_scale="${action_scales[$i]}" 
-
     # With propioception
-    MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
-    MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
+    MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
+    MADRONA_BVH_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache \
     python train_pick_cube_ppo.py \
       --env_name="$ENV_NAME" \
       --num_timesteps="$NUM_TIMESTEPS" \
