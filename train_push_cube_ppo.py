@@ -384,43 +384,45 @@ def main(argv):
     return jax.tree.map(lambda y: y[0], x)
 
 
+  skip_render = True
 
-  jit_reset = jax.jit(env.reset)
-  jit_step = jax.jit(env.step)
-  jit_inference_fn = jax.jit(make_inference_fn(params, deterministic=True))
+  if not skip_render:
+    jit_reset = jax.jit(env.reset)
+    jit_step = jax.jit(env.step)
+    jit_inference_fn = jax.jit(make_inference_fn(params, deterministic=True))
 
-  # Prepare for evaluation
+    # Prepare for evaluation
 
-  rng = jax.random.PRNGKey(123)
-  rollout = []
-  n_episodes = 2
-  to_keep = 256
-
-  def keep_until(state, i):
-      return jax.tree.map(lambda x: x[:i], state)
-
-  for episode in range(n_episodes):
-    key_rng = jax.random.split(rng, num_envs)
-    state = jit_reset(key_rng)
-    rollout.append(keep_until(state, to_keep))
-    for i in tqdm(range(env_cfg.episode_length)):
-        act_rng, rng = jax.random.split(rng)
-        act_rng = jax.random.split(act_rng, num_envs)
-        ctrl, _ = jit_inference_fn(state.obs, act_rng)
-        state = jit_step(state, ctrl)
-        rollout.append(keep_until(state, to_keep))
-
-    render_every = 1
-    frames = env.render([unvmap(s) for s in rollout][::render_every], width=640, height=480)
-    frames_wrist_camera = env.render([unvmap(s) for s in rollout][::render_every], camera="mounted")
-
-    video_path = logdir / f"rollout-{episode}.mp4"
-    media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
-    video_path = logdir / f"rollout-wrist-camera-{episode}.mp4"
-    media.write_video(video_path, frames_wrist_camera, fps=1.0 / env.dt / render_every)
+    rng = jax.random.PRNGKey(123)
     rollout = []
-  print(f"Rollout video saved as '{video_path}'.")
-  print("Rollout video saved as 'rollout.mp4'.")
+    n_episodes = 2
+    to_keep = 256
+
+    def keep_until(state, i):
+        return jax.tree.map(lambda x: x[:i], state)
+
+    for episode in range(n_episodes):
+      key_rng = jax.random.split(rng, num_envs)
+      state = jit_reset(key_rng)
+      rollout.append(keep_until(state, to_keep))
+      for i in tqdm(range(env_cfg.episode_length)):
+          act_rng, rng = jax.random.split(rng)
+          act_rng = jax.random.split(act_rng, num_envs)
+          ctrl, _ = jit_inference_fn(state.obs, act_rng)
+          state = jit_step(state, ctrl)
+          rollout.append(keep_until(state, to_keep))
+
+      render_every = 1
+      frames = env.render([unvmap(s) for s in rollout][::render_every], width=640, height=480)
+      frames_wrist_camera = env.render([unvmap(s) for s in rollout][::render_every], camera="mounted")
+
+      video_path = logdir / f"rollout-{episode}.mp4"
+      media.write_video(video_path, frames, fps=1.0 / env.dt / render_every)
+      video_path = logdir / f"rollout-wrist-camera-{episode}.mp4"
+      media.write_video(video_path, frames_wrist_camera, fps=1.0 / env.dt / render_every)
+      rollout = []
+    print(f"Rollout video saved as '{video_path}'.")
+    print("Rollout video saved as 'rollout.mp4'.")
 
 
 

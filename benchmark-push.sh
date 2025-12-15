@@ -11,10 +11,10 @@ DEVICE_ID=0
 # Only include compatible pairs here:
 
 PAIRS=(
+  "position cartesian_increment 0.05"
+  "velocity cartesian_increment 0.05"
   "velocity joint 1"
-  # "torque joint"
-  # "position cartesian_increment 0.05"
-  # "position joint_increment 0.05"
+  "position joint_increment 0.05"
 )
 # action_scales=(1.0 0.05 0.05 0.05)
 
