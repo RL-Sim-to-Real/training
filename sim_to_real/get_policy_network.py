@@ -43,10 +43,22 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
+from typing import Dict
 
 InferenceParams = Tuple[running_statistics.NestedMeanStd, Params]
 Metrics = types.Metrics
 
+def _normalize_prop_only(
+    obs: Dict[str, Any],
+    normalizer_state: Any,
+):
+  """Applies running-statistics normalization only to obs['_prop']."""
+  # Keep pixels untouched
+  if '_prop' not in obs:
+    return obs
+  obs = dict(obs)
+  obs['_prop'] = running_statistics.normalize(obs['_prop'], normalizer_state)
+  return obs
 
 
 
@@ -58,26 +70,27 @@ def make_inference_fn(
     ] = ppo_networks.make_ppo_networks,
     include_prop: bool = False,
 ):
-
-  normalize = lambda x, y: x
+  preprocess = None
   if normalize_observations:
-    normalize = running_statistics.normalize
+    # IMPORTANT: don't normalize pixels; only normalize low-dim proprioception
+    preprocess = _normalize_prop_only
+
   obs_sizes = {'pixels/view_0': (64, 64, 3)}
   if not include_prop:
     ppo_network = network_factory(
         obs_sizes,
         action_size,
-        preprocess_observations_fn=normalize,
+        preprocess_observations_fn=preprocess,
     )
   else:
-    print("Prop size:", 16 + action_size)
     obs_sizes['_prop'], obs_key = (16 + action_size,), '_prop'
     ppo_network = network_factory(
         obs_sizes,
         action_size,
-        preprocess_observations_fn=normalize,
+        preprocess_observations_fn=preprocess,
         policy_obs_key=obs_key,
         value_obs_key=obs_key,
     )
+
   make_policy = ppo_networks.make_inference_fn(ppo_network)
   return make_policy
