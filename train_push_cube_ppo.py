@@ -384,7 +384,7 @@ def main(argv):
     return jax.tree.map(lambda y: y[0], x)
 
 
-  skip_render = True
+  skip_render = False
 
   if not skip_render:
     jit_reset = jax.jit(env.reset)

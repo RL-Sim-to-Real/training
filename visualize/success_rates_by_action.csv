@@ -1,4 +1,4 @@
 action,success_rate
+joint_velocity,100.0
 cartesian_position,80.0
 joint_position,93.33333333333333
-joint_velocity,100.0

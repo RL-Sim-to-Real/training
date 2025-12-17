@@ -5,7 +5,7 @@ export MUJOCO_GL=egl
 
 ENV_NAME="PandaPickCuboid"
 NUM_TIMESTEPS=15_000_000
-SEEDS=({5..5})
+SEEDS=({0..9})
 # SEEDS=(0 1 2 3 4 5)
 DEVICE_ID=0
 
@@ -31,8 +31,8 @@ for seed in "${SEEDS[@]}"; do
 
 
     # With propioception
-    MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
-    MADRONA_BVH_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache \
+    # MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
+    # MADRONA_BVH_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache \
     python train_pick_cube_ppo.py \
       --env_name="$ENV_NAME" \
       --num_timesteps="$NUM_TIMESTEPS" \
