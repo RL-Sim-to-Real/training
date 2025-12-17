@@ -98,8 +98,14 @@ class Agent():
             params = pickle.load(f)
 
         self.action_shape = (4,) if 'cartesian' in policy_fn else (8,)
-        inference_fn = make_inference_fn(network_factory=network_factory, action_size=self.action_shape[0], include_prop=use_prop)
-
+        inference_fn = make_inference_fn(
+            normalize_observations=True,
+            action_size=self.action_shape[0],
+            network_factory=network_factory,
+            include_prop=True,
+        )              
+        # print(params)
+        # exit()
         self.jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
         # self.action_shm = shared_memory.SharedMemory(name=action_name)
         # self.action_array = np.ndarray(self.action_shape, dtype=action_dtype, buffer=self.action_shm.buf)
@@ -109,7 +115,7 @@ class Agent():
 
     def get_action(self, proprioception=None):
         self.key, _ = jax.random.split(self.key)
-        obs = {'pixels/view_0': self.img_array.copy() / 255.0}
+        obs = {'pixels/view_0': self.img_array.copy().astype(np.float32) /255.0}
         if self.use_prop:
             obs['_prop'] = proprioception
         t0 = time.time()
@@ -423,7 +429,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
-        reset_cube_position(point_cam_array, env, target_joints)
+        reset_cube_position(point_cam_array, env, target_joints) # make sure to uncomment
 
         # reset the robot joints to initial position again
         env.move_to_joint_positions(target_joints)
@@ -468,7 +474,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.0): # grasp it only once
+            if (action[-1] < -0.1 and not env.grasped): # grasp it only once
                 print("attempting grasp")
                 env.grasped = env.grasp_object()
                 print("grasped:", env.grasped)
@@ -590,7 +596,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 10, None
+    n_processes, max_trials, trial_process = 0, 15, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
