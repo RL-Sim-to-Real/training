@@ -204,7 +204,7 @@ def main(argv):
   env_cfg = manipulation.get_default_config(env_name)
 
   num_envs = 1024
-  episode_length = int(4 / env_cfg.ctrl_dt)
+  episode_length = int(6 / env_cfg.ctrl_dt)
   if _PROPRIOCEPTION.value:
     print("Using proprioception in the observation space.")
   # Rasterizer is less feature-complete than ray-tracing backend but stable
@@ -387,7 +387,7 @@ def main(argv):
 
 
 
-  skip_render = True
+  skip_render = False
   if not skip_render:
 
     jit_reset = jax.jit(env.reset)

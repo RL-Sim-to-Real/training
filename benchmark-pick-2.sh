@@ -7,13 +7,13 @@ ENV_NAME="PandaPickCuboid"
 NUM_TIMESTEPS=15_000_000
 SEEDS=({0..9})
 # SEEDS=(0 1 2 3 4 5)
-DEVICE_ID=0
+DEVICE_ID=1
 
 # Only include compatible pairs here:
 
 PAIRS=(
-  "position cartesian_increment 0.05"
-  "velocity cartesian_increment 0.05"
+  # "position cartesian_increment 0.05"
+  # "velocity cartesian_increment 0.05"
   "velocity joint 1"
   "position joint_increment 0.05"
 )
