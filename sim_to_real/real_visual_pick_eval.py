@@ -86,20 +86,27 @@ class Agent():
         ppo_params.network_factory = network_factory
 
         policy_fn = {
-            'cartesian_position': "test_policies/params_general_cartesian_increment-position.pkl",
-            'joint_position': "test_policies/params_general_joint_increment-position.pkl",
-            'joint_velocity': "thesis_policies/pick/params_general_joint-velocity.pkl",
+            'cartesian_position': "thesis_policies/pick/params_general_cartesian_increment-position_prop_seed7.pkl",
+            'cartesian_velocity': "thesis_policies/pick/params_general_cartesian_increment-velocity_prop_seed7.pkl",
+            'joint_position': "thesis_policies/pick/params_general_joint_increment-position_prop_seed4.pkl",
+            'joint_velocity': "thesis_policies/pick/params_general_joint-velocity_prop_seed4.pkl",
             'joint_torque': "test_policies/params_general_joint-torque.pkl",
         }[control_mode]
-        if use_prop:
-            # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
-            policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
+        # if use_prop:
+        #     # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
+        #     policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
         with open(policy_fn, "rb") as f:
             params = pickle.load(f)
 
-        self.action_shape = (4,) if 'cartesian' in policy_fn else (8,)
+        self.action_shape = (8,) if 'cartesian' in policy_fn else (8,)
+        norm_obs_dict = {
+            'cartesian_position': True,
+            'cartesian_velocity': True,
+            'joint_position': True,
+            'joint_velocity': True,
+        }
         inference_fn = make_inference_fn(
-            normalize_observations=True,
+            normalize_observations=norm_obs_dict[control_mode],
             action_size=self.action_shape[0],
             network_factory=network_factory,
             include_prop=True,
@@ -117,7 +124,7 @@ class Agent():
         self.key, _ = jax.random.split(self.key)
         obs = {'pixels/view_0': self.img_array.copy().astype(np.float32) /255.0}
         if self.use_prop:
-            obs['_prop'] = proprioception
+            obs['_prop'] = np.asarray(proprioception, dtype=np.float32)
         t0 = time.time()
         action, _ = self.jit_inference_fn(obs, self.key) # empirical inference time is 0.016
         print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
@@ -337,7 +344,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
     grasp_height = 0.065
     pose_ee[2] = grasp_height
-    pose_ee[0] -= 0.015 # offset to be above the cube center
+    pose_ee[0] -= 0.0 # offset to be above the cube center
     env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle)
     env.grasp_object()
     # time.sleep(0.25)
@@ -402,8 +409,15 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'cartesian_position',
         'joint_position',
         'joint_velocity',
-        'joint_torque',
-    ][2]
+        'cartesian_velocity', 
+        'joint_torque', # deprecated
+    ][0]
+    grasp_threshold_dict = {
+        'cartesian_position': -0.2,
+        'joint_position': -0.25,
+        'joint_velocity': -0.2,
+        'cartesian_velocity': -0.2,
+    }
 
     use_prop = True
     # action_shm = shared_memory.SharedMemory(name=action_name)
@@ -419,12 +433,14 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
     target_joints = np.array([-0.01266706, 0.23113158, 0.01397337, -2.11847885, -0.00837887, 2.33090511, 0.80890272])
     # target_joints = np.array([-0.00002, 0.47804, -0.00055, -1.81309, -0.00161, 2.34597, 0.78501])
     env.move_to_joint_positions(target_joints)
+    max_grasp_attempts = 10
 
-    trial_length = 60
+    trial_length = 30
+    skip_to_trial = 9
     for i in range(max_trials):
-        # if i < 14:
-        #     np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
-        #     continue
+        if i < skip_to_trial:
+            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
+            continue
         # if not env.grasped:
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
@@ -438,7 +454,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         success = False
         env.grasped = False
         ee_pos,_ = env.reset()
-
+        attempted_grasps = 0
         t_start = time.time()
         print("Resetting cube position...")
         env.open_gripper()
@@ -467,16 +483,17 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
                 proprioception = np.concatenate([ 
                     normalized_jp, 
                     normalized_jv,  # Include joint velocities in proprioception
-                    action, ee_height_n, np.array([float(env.grasped)])], axis=-1).astype(np.float32)
+                    action, 
+                    ee_height_n, np.array([float(env.grasped)])], axis=-1).astype(np.float32)
                 # proprioception = np.concatenate([obs['height'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
                 # proprioception = np.zeros((2,), dtype=np.float32)
                 print(f"Proprioception: {proprioception.shape}, {proprioception}")
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < -0.1 and not env.grasped): # grasp it only once
+            if (action[-1] < grasp_threshold_dict[control_mode] and not env.grasped): # grasp it only once
                 print("attempting grasp")
-                env.grasped = env.grasp_object()
+                env.grasped = env.grasp_object(wait_for_result=True)
                 print("grasped:", env.grasped)
                 time.sleep(0.25)  # Wait for the gripper to close
             if env.grasped and action[-1] >= 0.9:
@@ -489,6 +506,10 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             print('fingertip width:', fingertip_width)
             if env.grasped and fingertip_width < 0.035:
                 print('unsuccessful grasp, opening gripper')
+                attempted_grasps += 1
+                if attempted_grasps >= max_grasp_attempts:
+                    print("Maximum grasp attempts reached, aborting trial.")
+                    break
                 env.gripper.stop_action()
                 env.gripper.open()
                 time.sleep(0.25)  # Wait for the gripper to open
@@ -500,7 +521,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             print(f"Time taken for one step: {end - start:.3f} seconds")
 
             fingertip_width = env.get_fingertip_width()
-            if env.grasped and fingertip_width > 0.035 and np.abs(ee_pos[2] - 0.2) < 0.03:
+            if env.grasped and np.abs(fingertip_width - 0.04) < 0.001 and np.abs(ee_pos[2] - 0.2) < 0.03:
                 print(f"---- Trial {i}: Complete")
                 success = True
                 break
@@ -508,21 +529,21 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             if time.time() - t_start > trial_length:
                 print(f"---- Trial {i}: Timeout")
                 break
-            if ee_pos[0] < 0.3:
+            if ee_pos[0] < 0.27 or ee_pos[0] > 0.8 or np.abs(ee_pos[1]) > 0.35 or ee_pos[2] < -0.5 or ee_pos[2] > 0.5:
                 print(f"---- Trial {i}: Robot moved out of workspace")
                 break
         # print(env.logger.metrics)
         env.logger.metrics[-1]['success'] = success
-        env.logger.metrics[-1]['trial time'] = time.time() - t_start
+        env.logger.metrics[-1]['trial time'] = env.logger.metrics[-1]["t"] * env.dt # 0.04 is the cycle time
         # put the cube back down
         if env.grasped:
-            target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.06])  # Keep x, y the same and set z to 0.02
+            target_x_y_z = jp.array([ee_pos[0], ee_pos[1], 0.07])  # Keep x, y the same and set z to 0.02
             env.move_to_pose_ee(target_x_y_z)
         env.open_gripper()
 
         # save logs
         if save_logs:
-            fp = Path(f'real_franka_eval_logs/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl.csv')
+            fp = Path(f'real_franka_eval_logs/pick/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl.csv')
             fp.parent.mkdir(parents=True, exist_ok=True)
             env.logger.save(fp)
 
@@ -596,7 +617,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 15, None
+    n_processes, max_trials, trial_process = 0, 12, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
@@ -609,16 +630,16 @@ def main():
 
         img = np.asanyarray(color_frame.get_data())
         original_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # img = np.asanyarray(depth_frame.get_data())
-        # img = cv2.convertScaleAbs(img, alpha=0.10)
-        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
 
 
         
-        img = img[:, 120:]
+        h, w = img.shape[:2] # this prserves principle point
+        side = min(h, w)
+        y0 = (h - side) // 2
+        x0 = (w - side) // 2
+        img = img[y0:y0+side, x0:x0+side]
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
-        # H, W = img.shape[:2]
 
 
         # print(f"Captured image size: {W}x{H}")
@@ -669,16 +690,6 @@ def main():
     if trial_process is not None:
         trial_process.join()
 
-    # results = []
-    # for _ in range(2):
-    #     # eval_automator.reset_cube()
-    #     result = run_trial(action_array, env)
-    #     results.append(result)
-
-    # env.reset()
-    # env.close()
-    # p.join()  # Wait for the agent process to finish
-    # c.join()  
     action_shm.close()
     action_shm.unlink()  # Unlink the shared memory
     image_shm.close()

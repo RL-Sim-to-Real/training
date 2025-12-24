@@ -70,10 +70,11 @@ def make_inference_fn(
     ] = ppo_networks.make_ppo_networks,
     include_prop: bool = False,
 ):
-  preprocess = None
+  preprocess = lambda x, y: x
   if normalize_observations:
     # IMPORTANT: don't normalize pixels; only normalize low-dim proprioception
     preprocess = _normalize_prop_only
+    # preprocess = running_statistics.normalize # --> this doesn't work!
 
   obs_sizes = {'pixels/view_0': (64, 64, 3)}
   if not include_prop:

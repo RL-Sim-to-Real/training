@@ -5,8 +5,8 @@ export MUJOCO_GL=egl
 
 ENV_NAME="PandaPushCuboid"
 NUM_TIMESTEPS=15_000_000
-SEEDS=({0..9})
-DEVICE_ID=1
+SEEDS=({7..9})
+DEVICE_ID=0
 
 # Only include compatible pairs here:
 
@@ -30,11 +30,8 @@ for seed in "${SEEDS[@]}"; do
 
 
     # With propioception
-    # MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
-    # MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
-
-    # MADRONA_MWGPU_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/kernel_cache \
-    # MADRONA_BVH_KERNEL_CACHE=/home/nika/Desktop/Research/madrona_mjx/build/bvh_cache \
+    MADRONA_MWGPU_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/kernel_cache \
+    MADRONA_BVH_KERNEL_CACHE=/home/chemist/Desktop/ICRA2026/madrona_mjx/build/bvh_cache \
     python train_push_cube_ppo.py \
       --env_name="$ENV_NAME" \
       --num_timesteps="$NUM_TIMESTEPS" \
