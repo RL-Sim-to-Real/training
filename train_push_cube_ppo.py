@@ -279,7 +279,7 @@ def main(argv):
   print(f"Experiment name: {exp_name}")
 
   # Set up logging directory
-  logdir = epath.Path("logs").resolve() / exp_name
+  logdir = epath.Path("logs-push").resolve() / exp_name
   if logdir.exists():
     shutil.rmtree(logdir)
   logdir.mkdir(parents=True, exist_ok=True)
@@ -373,6 +373,7 @@ def main(argv):
   filename = f"params_general_{_ACTION_SPACE.value}-{_ACTUATOR.value}"
   if _PROPRIOCEPTION.value:
     filename += "_prop"
+  filename += f"_seed{_SEED.value}"
   filename += ".pkl"
   with open(logdir / filename, "wb") as f:
     pickle.dump(params, f)
