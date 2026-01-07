@@ -86,19 +86,31 @@ class Agent():
         ppo_params.network_factory = network_factory
 
         policy_fn = {
-            'cartesian_position': "test_policies/params_general_cartesian_increment-position.pkl",
-            'joint_position': "test_policies/params_general_joint_increment-position.pkl",
-            'joint_velocity': "thesis_policies/push/params_general_joint-velocity.pkl",
-            'joint_torque': "test_policies/params_general_joint-torque.pkl",
+            'cartesian_position': "thesis_policies/push/params_general_cartesian_increment-position_prop_seed9.pkl",
+            'cartesian_velocity': "thesis_policies/push/params_general_cartesian_increment-velocity_prop_seed5.pkl",
+            'joint_position': "thesis_policies/push/params_general_joint_increment-position_prop_seed6.pkl",
+            'joint_velocity': "thesis_policies/push/params_general_joint-velocity_prop_seed1.pkl",
+            # 'joint_torque': "test_policies/params_general_joint-torque.pkl",
         }[control_mode]
-        if use_prop:
-            # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
-            policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
+        # if use_prop:
+        #     # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
+        #     policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
         with open(policy_fn, "rb") as f:
             params = pickle.load(f)
 
-        self.action_shape = (3,) if 'cartesian' in policy_fn else (7,)
-        inference_fn = make_inference_fn(network_factory=network_factory, action_size=self.action_shape[0], include_prop=use_prop)
+        self.action_shape = (7,)
+        norm_obs_dict = {
+            'cartesian_position': True,
+            'cartesian_velocity': True,
+            'joint_position': True,
+            'joint_velocity': True,
+        }
+        inference_fn = make_inference_fn(
+            normalize_observations=norm_obs_dict[control_mode],
+            action_size=self.action_shape[0],
+            network_factory=network_factory,
+            include_prop=True,
+        )   
 
         self.jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
         # self.action_shm = shared_memory.SharedMemory(name=action_name)
@@ -276,15 +288,21 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     env.grasp_object()
     # time.sleep(0.25)
     pose_ee[2] = 0.3
+    # apply a small random yaw offset to the end-effector before moving away
     env.move_to_pose_ee(pose_ee)
     # time.sleep(1)
     # randomize the cube position8
-    cube_pos = np.array([np.random.uniform(0.60, 0.60), np.random.uniform(-0.03, 0.03), grasp_height + 0.005])
+    cube_pos = np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
     # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
     print(f"Moving cube to new position: {cube_pos[:2]}")
+
     env.move_to_pose_ee(cube_pos)
     cube_pos[2] = grasp_height + 0.0005
-    env.move_to_pose_ee(cube_pos)
+    yaw_offset_deg = np.random.uniform(-45.0, 45.0)
+    yaw_offset = np.deg2rad(yaw_offset_deg)
+    random_ee_angle = ee_angle.copy()
+    random_ee_angle[2] += yaw_offset
+    env.move_to_pose_ee(cube_pos, ref_ee_angle=random_ee_angle)
     # time.sleep(1)
     env.open_gripper()
     # time.sleep(0.25)
@@ -307,14 +325,9 @@ def get_point_base(point_cam, env):
     with open(T_ee_camera_file, "r") as f:
         T_ee_camera = np.array(json.load(f))
     T_base_camera = T_base_ee @ T_ee_camera
-    # print('camera position:', T_base_camera[:3, 3])
-    # T_base_camera = T_base_ee @ np.linalg.inv(T_ee_camera)
-    # T_base_camera = np.linalg.inv(T_base_ee @ np.linalg.inv(T_ee_camera))
-    # T_base_camera = T_ee_camera @ T_base_ee
-    # T_base_camera = np.linalg.inv(T_ee_camera @ T_base_ee)
+
     point_cam_homog = np.array([point_cam[0], point_cam[1], point_cam[2], 1.0])
-    # point_cam_homog = np.array([point_cam[1], -point_cam[0], -point_cam[2], 1.0])
-    # point_ee = np.linalg.inv(T_ee_camera) @ point_cam_homog
+
     point_ee = T_ee_camera @ point_cam_homog
     point_base = T_base_camera @ point_cam_homog
     return point_base, point_ee
@@ -372,79 +385,39 @@ def has_contact(img: np.ndarray) -> bool:
     return touching
 
 
-def is_cube_close_to_tape(
-    img_rgb: np.ndarray,
-    close_frac: float = 0.25,   # fraction of tape thickness used as threshold
-    min_thr_px: int = 6,        # minimum pixel threshold
-    annotate_path: str = None   # if set, save an annotated PNG here
-) -> Dict:
+
+def cube_in_bottom_half(img: np.ndarray) -> Dict:
     """
-    Returns:
-      {
-        'cube_center': (x, y),
-        'tape_center': (x, y),
-        'vertical_distance_pixels': int,
-        'euclidean_distance_pixels': int,
-        'tape_height_pixels': int,
-        'threshold_pixels': int,
-        'is_close': bool,
-        'annotated_image_path': str or None
-      }
+    Detects a red cube and checks if its centroid lies in the bottom half of the image.
+    Returns a dict with centroid, image size, and a boolean flag.
     """
 
+    h, w = img.shape[:2]
+    
+    # HSV threshold for red (two ranges due to hue wrap-around)
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV) # WARNING: MAKE SURE IMAGE IS BGR
+    lower1, upper1 = np.array([0, 90, 90]),  np.array([10, 255, 255])
+    lower2, upper2 = np.array([170, 90, 90]), np.array([180, 255, 255])
+    mask = cv2.inRange(hsv, lower1, upper1) | cv2.inRange(hsv, lower2, upper2)
 
-    hsv = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2HSV)
+    # Clean up mask
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5,5), np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5,5), np.uint8), iterations=2)
 
-    # --- Detect red cube (handle hue wrap-around) ---
-    # Tune S/V floors if lighting changes
-    lower_red1 = np.array([0,   90,  90], np.uint8)
-    upper_red1 = np.array([10, 255, 255], np.uint8)
-    lower_red2 = np.array([170, 90,  90], np.uint8)
-    upper_red2 = np.array([180, 255, 255], np.uint8)
+    # Largest red contour → cube
+    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return False  # No cube detected
+    cube = max(cnts, key=cv2.contourArea)
 
-    mask_r = cv2.inRange(hsv, lower_red1, upper_red1) | cv2.inRange(hsv, lower_red2, upper_red2)
-    mask_r = cv2.morphologyEx(mask_r, cv2.MORPH_OPEN, np.ones((5,5), np.uint8), iterations=1)
-    mask_r = cv2.morphologyEx(mask_r, cv2.MORPH_CLOSE, np.ones((5,5), np.uint8), iterations=2)
+    # Centroid
+    M = cv2.moments(cube)
+    cx = int(M['m10'] / (M['m00'] + 1e-6))
+    cy = int(M['m01'] / (M['m00'] + 1e-6))
 
-    cnts_r, _ = cv2.findContours(mask_r, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts_r:
-        return {'is_close': False}  # assume not close if no cube found
-    cube_cnt = max(cnts_r, key=cv2.contourArea)
-    M = cv2.moments(cube_cnt)
-    if M['m00'] == 0:
-        raise RuntimeError("Degenerate red contour (zero area).")
-    cx_cube = int(M['m10'] / M['m00'])
-    cy_cube = int(M['m01'] / M['m00'])
-
-    # --- Detect white tape (low saturation, high value) ---
-    lower_white = np.array([0,   0, 180], np.uint8)
-    upper_white = np.array([179, 40, 255], np.uint8)
-    mask_w = cv2.inRange(hsv, lower_white, upper_white)
-    mask_w = cv2.morphologyEx(mask_w, cv2.MORPH_CLOSE, np.ones((9,9), np.uint8), iterations=2)
-
-    cnts_w, _ = cv2.findContours(mask_w, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts_w:
-        return {'is_close': False}
-    tape_cnt = max(cnts_w, key=cv2.contourArea)
-    x, y, w, h = cv2.boundingRect(tape_cnt)
-    cx_tape = x + w // 2
-    cy_tape = y + h // 2
-
-    # --- Distances & decision ---
-    dy = abs(cy_cube - cy_tape)
-    euclid = int(np.hypot(cx_cube - cx_tape, cy_cube - cy_tape))
-    thr = int(max(min_thr_px, close_frac * h))
-    is_close = dy <= thr
-
-    return {
-        "cube_center": (cx_cube, cy_cube),
-        "tape_center": (cx_tape, cy_tape),
-        "vertical_distance_pixels": int(dy),
-        "euclidean_distance_pixels": int(euclid),
-        "tape_height_pixels": int(h),
-        "threshold_pixels": int(thr),
-        "is_close": bool(is_close),
-    }
+    # Bottom-half test
+    in_bottom = cy >= h // 2
+    return in_bottom
 
 def run_trials(max_trials, 
                action_name, 
@@ -452,19 +425,18 @@ def run_trials(max_trials,
                action_dtype, 
                point_cam_name, 
                point_cam_shape, 
-               point_cam_dtype, image_name, image_shape, image_dtype, has_contact_name, has_contact_shape, has_contact_dtype):
+               point_cam_dtype, image_name, image_shape, image_dtype, cube_in_position_name, cube_in_position_shape, cube_in_position_dtype):
     save_logs = True
     control_mode = [
         'cartesian_position',
         'joint_position',
         'joint_velocity',
-        'joint_torque',
-    ][2]
+        'cartesian_velocity',
+    ][3]
 
     use_prop = True
-    # action_shm = shared_memory.SharedMemory(name=action_name)
-    # action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
-    env = FrankaPushCube(camera_index=0, control_mode=control_mode)
+
+    env = FrankaPushCube(camera_index=0, control_mode=control_mode, seed=0)
     agent = Agent(control_mode, use_prop, action_name, action_shape, action_dtype, image_name, image_shape, image_dtype)
 
     # reset the cube position
@@ -473,19 +445,21 @@ def run_trials(max_trials,
 
     # image_shm = shared_memory.SharedMemory(name=image_name)
     # img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
-    has_contact_shm = shared_memory.SharedMemory(name=has_contact_name)
-    has_contact_array = np.ndarray(has_contact_shape, dtype=has_contact_dtype, buffer=has_contact_shm.buf)
+    cube_in_position_shm = shared_memory.SharedMemory(name=cube_in_position_name)
+    cube_in_position_array = np.ndarray(cube_in_position_shape, dtype=cube_in_position_dtype, buffer=cube_in_position_shm.buf)
 
     # reset the robot joints to initial position
     target_joints = np.array([-0.01266706, 0.23113158, 0.01397337, -2.11847885, -0.00837887, 2.33090511, 0.80890272])
     # target_joints = np.array([-0.00002, 0.47804, -0.00055, -1.81309, -0.00161, 2.34597, 0.78501])
     env.move_to_joint_positions(target_joints)
 
-    trial_length = 60
-    displacement = 0
+    trial_length = 10
+    skip_to_trial = 0
     for i in range(max_trials):
-        has_contact_array[0] = 0
-        
+        cube_in_position_array[0] = 0
+        if i < skip_to_trial:
+            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
+            continue
         env.move_to_joint_positions(target_joints)
         env.open_gripper()
         env.apply_joint_vel(np.zeros((7,)))
@@ -498,16 +472,14 @@ def run_trials(max_trials,
 
         success = False
         env.grasped = False
-        env.close_gripper()
         ee_pos,_ = env.reset()
         t_start = time.time()
 
 
         action = np.zeros(agent.action_shape, dtype=np.float32)
         env.logger.clear()
-        init_pose_ee = ee_pos.copy()
-        print(ee_pos)
-        env.close_gripper()
+        init_position_ee = ee_pos.copy()
+        aggregate_displacement = 0.0
         # env.gripper.home_joints()
         while True:
             # action = action_array.copy()  # Copy the action from shared memory
@@ -524,14 +496,14 @@ def run_trials(max_trials,
                     jp.array(_jnt_vel_range())[:, 1] - jp.array(_jnt_vel_range())[:, 0]
                 ) - 1.0
 
-                ee_height_n = obs['height']
+                ee_height = obs['height']
                 # h_min, h_max = 0.0, 0.2
                 # ee_height_n = jp.clip(2.0 * (ee_height_n - h_min) / (h_max - h_min) - 1.0, -1.0, 1.0)
                 
                 proprioception = np.concatenate([ 
                     normalized_jp, 
                     normalized_jv,  # Include joint velocities in proprioception
-                    action, ee_height_n], axis=-1).astype(np.float32)
+                    action, ee_height], axis=-1).astype(np.float32)
                 # proprioception = np.concatenate([obs['height'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
                 # proprioception = np.zeros((2,), dtype=np.float32)
                 print(f"Proprioception: {proprioception.shape}, {proprioception}")
@@ -539,39 +511,31 @@ def run_trials(max_trials,
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
 
-            # reopen gripper if grasp was unsuccessful
 
             start = time.time()
             ee_pos = env.step(action)
             end = time.time()
-            print(f"Time taken for one step: {end - start:.3f} seconds")
-            print(has_contact_array[0])
-            if has_contact_array[0] > 0:
-                success = True 
-                print(f"---- Trial {i}: Success! Displacement: {displacement:.3f} m")
-                time.sleep(1)
-                break
-            
-            # fingertip_width = env.get_fingertip_width()
-            # if env.grasped and fingertip_width > 0.035 and ee_pos[2] > 0.1:
-            #     print(f"---- Trial {i}: Complete")
-            #     success = True
-            #     break
-
+            print("cube_in_position:", cube_in_position_array[0])
+            print("ee height:", ee_pos[2])
+            aggregate_displacement += np.linalg.norm(ee_pos[:2] - init_position_ee[:2]) * cube_in_position_array[0] * (ee_height < 0.05)
+            init_position_ee = ee_pos.copy()
+        
             if time.time() - t_start > trial_length:
                 print(f"---- Trial {i}: Timeout")
                 break
-            if ee_pos[0] < 0.3:
+            if ee_pos[0] < 0.27 or ee_pos[0] > 0.8 or ee_pos[1] > 0.35 or ee_pos[1] < -0.35 or ee_pos[2] > 0.5:
                 print(f"---- Trial {i}: Robot moved out of workspace")
                 break
         # print(env.logger.metrics)
-        env.logger.metrics[-1]['success'] = success
-        env.logger.metrics[-1]['trial time'] = time.time() - t_start
+        # env.logger.metrics[-1]['success'] = success
+        # env.logger.metrics[-1]['trial time'] = time.time() - t_start
+        print("Aggregate displacement:", aggregate_displacement)
+        env.logger.metrics[-1]['aggregate displacement'] = aggregate_displacement
 
 
         # save logs
         if save_logs:
-            fp = Path(f'real_franka_eval_logs/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl.csv')
+            fp = Path(f'real_franka_eval_logs/push/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl.csv')
             fp.parent.mkdir(parents=True, exist_ok=True)
             env.logger.save(fp)
 
@@ -633,16 +597,9 @@ def main():
     point_cam = np.zeros(7, dtype=np.float32)
     point_cam_shm = shared_memory.SharedMemory(create=True, size=point_cam.nbytes)
     point_cam_array = np.ndarray(buffer=point_cam_shm.buf, dtype=np.float32, shape=point_cam.shape)
-    has_contact_shm = shared_memory.SharedMemory(create=True, size=1)
-    has_contact_array = np.ndarray(buffer=has_contact_shm.buf, dtype=np.uint8, shape=(1,))
+    cub_in_position = shared_memory.SharedMemory(create=True, size=1)
+    cube_in_position_array = np.ndarray(buffer=cub_in_position.buf, dtype=np.uint8, shape=(1,))
     action_array[:] = action  # Copy the initial action to shared memory
-    # p = Process(target=agent_process, args=(action_shm.name, action.shape, action.dtype,
-    #                                            image_shm.name, dummy_img.shape, dummy_img.dtype))
-    # c = Process(target=camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype))
-    # c = Process(target=rs_camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype, pipeline, align))
-    # c = threading.Thread(target=rs_camera_thread, args=(image_array,), daemon=True)
-    # c.start()  # Start the camera process
-    # p.start()
 
     # main loop
     fps = 30
@@ -659,25 +616,25 @@ def main():
             continue
 
         img = np.asanyarray(color_frame.get_data())
-        # img = np.asanyarray(depth_frame.get_data())
-        # img = cv2.convertScaleAbs(img, alpha=0.10)
-        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
-        
 
         
-        img = img[:, 120:]
+        h, w = img.shape[:2] # this prserves principle point
+        side = min(h, w)
+        y0 = (h - side) // 2
+        x0 = (w - side) // 2
+        img = img[y0:y0+side, x0:x0+side]
         original_img = img.copy()
-        has_contact_array[0] = 1 if is_cube_close_to_tape(cv2.cvtColor(img, cv2.COLOR_BGR2RGB).copy())['is_close'] else 0 # expects RGB image
+        # print("cube_in_bottom_half:", cube_in_bottom_half(cv2.cvtColor(img, cv2.COLOR_BGR2RGB).copy()))
+        cube_in_position_array[0] = 1 if cube_in_bottom_half(original_img.copy()) else 0 # image is BGR!
+        # has_contact_array[0] = 1 if is_cube_close_to_tape(cv2.cvtColor(img, cv2.COLOR_BGR2RGB).copy())['is_close'] else 0 # expects RGB image
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
-        # H, W = img.shape[:2]
 
-
-        # print(f"Captured image size: {W}x{H}")
         img = cv2.resize(img, (64, 64)) 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
         image_array[:] = img  # Copy the image to shared memory
 
+        # continue
         # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
@@ -689,8 +646,7 @@ def main():
             ext_frame[:64, :64, :] = img
             video.append(np.concatenate([ext_frame, original_img], axis=1))
             video_ts.append(time.time())
-            # cv2.imshow("External Camera", ext_frame)
-            # cv2.waitKey(1)
+
 
         latest_point_cam = eval_automator.get_red_cube_position(depth_frame, color_frame)
         if latest_point_cam is not None:
@@ -703,7 +659,7 @@ def main():
             trial_process = Process(target=run_trials, args=(max_trials, action_shm.name, action.shape, action.dtype,
                                                             point_cam_shm.name, point_cam.shape, point_cam.dtype,
                                                             image_shm.name, dummy_img.shape, dummy_img.dtype, 
-                                                            has_contact_shm.name, has_contact_array.shape, has_contact_array.dtype))
+                                                            cub_in_position.name, cube_in_position_array.shape, cube_in_position_array.dtype))
             trial_process.start()
         if n_processes >= 1 and not trial_process.is_alive():
             break
@@ -722,16 +678,7 @@ def main():
     if trial_process is not None:
         trial_process.join()
 
-    # results = []
-    # for _ in range(2):
-    #     # eval_automator.reset_cube()
-    #     result = run_trial(action_array, env)
-    #     results.append(result)
 
-    # env.reset()
-    # env.close()
-    # p.join()  # Wait for the agent process to finish
-    # c.join()  
     action_shm.close()
     action_shm.unlink()  # Unlink the shared memory
     image_shm.close()

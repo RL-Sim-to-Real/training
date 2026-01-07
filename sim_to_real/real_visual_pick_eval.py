@@ -529,7 +529,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             if time.time() - t_start > trial_length:
                 print(f"---- Trial {i}: Timeout")
                 break
-            if ee_pos[0] < 0.27 or ee_pos[0] > 0.8 or np.abs(ee_pos[1]) > 0.35 or ee_pos[2] < -0.5 or ee_pos[2] > 0.5:
+            if ee_pos[0] < 0.27 or ee_pos[0] > 0.8 or ee_pos[1] > 0.35 or ee_pos[1] < -0.35 or ee_pos[2] > 0.5:
                 print(f"---- Trial {i}: Robot moved out of workspace")
                 break
         # print(env.logger.metrics)
