@@ -411,7 +411,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_velocity',
         'cartesian_velocity', 
         'joint_torque', # deprecated
-    ][0]
+    ][1]
     grasp_threshold_dict = {
         'cartesian_position': -0.2,
         'joint_position': -0.25,
@@ -436,7 +436,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
     max_grasp_attempts = 10
 
     trial_length = 30
-    skip_to_trial = 9
+    skip_to_trial = 0
     for i in range(max_trials):
         if i < skip_to_trial:
             np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
@@ -445,7 +445,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
-        reset_cube_position(point_cam_array, env, target_joints) # make sure to uncomment
+        # reset_cube_position(point_cam_array, env, target_joints) # make sure to uncomment
 
         # reset the robot joints to initial position again
         env.move_to_joint_positions(target_joints)
@@ -587,7 +587,7 @@ def _jnt_vel_range():
 
 
 def main():
-    record_video = False
+    record_video = True
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -617,7 +617,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 12, None
+    n_processes, max_trials, trial_process = 0, 1, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
@@ -629,7 +629,7 @@ def main():
             continue
 
         img = np.asanyarray(color_frame.get_data())
-        original_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        # original_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
         
@@ -638,13 +638,16 @@ def main():
         y0 = (h - side) // 2
         x0 = (w - side) // 2
         img = img[y0:y0+side, x0:x0+side]
+
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
 
 
         # print(f"Captured image size: {W}x{H}")
-        img = cv2.resize(img, (64, 64)) 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
+        cropped_img = img.copy()
+        img = cv2.resize(img, (64, 64)) 
+        
         image_array[:] = img  # Copy the image to shared memory
 
         # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
@@ -656,7 +659,7 @@ def main():
             ext_frame = cv2.cvtColor(ext_frame, cv2.COLOR_BGR2RGB)
             # put img in the bottom left corner of ext_frame
             ext_frame[:64, :64, :] = img
-            video.append(np.concatenate([ext_frame, original_img], axis=1))
+            video.append(np.concatenate([ext_frame, cropped_img], axis=1))
             video_ts.append(time.time())
             # cv2.imshow("External Camera", ext_frame)
             # cv2.waitKey(1)
