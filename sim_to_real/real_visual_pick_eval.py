@@ -661,15 +661,12 @@ def main():
             ext_frame[:64, :64, :] = img
             video.append(np.concatenate([ext_frame, cropped_img], axis=1))
             video_ts.append(time.time())
-            # cv2.imshow("External Camera", ext_frame)
-            # cv2.waitKey(1)
 
         latest_point_cam = eval_automator.get_red_cube_position(depth_frame, color_frame)
         if latest_point_cam is not None:
             point_cam = latest_point_cam
             point_cam_array[:] = point_cam
-        # print(f"Cube position (x, y, z) in camera frame: {point_cam}")
-        # if n_processes < max_trials and (trial_process is None or not trial_process.is_alive()):
+
         if n_processes == 0 and (trial_process is None or not trial_process.is_alive()):
             n_processes += 1
             trial_process = Process(target=run_trials, args=(max_trials, action_shm.name, action.shape, action.dtype,
