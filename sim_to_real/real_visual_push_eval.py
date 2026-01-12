@@ -408,7 +408,7 @@ def run_trials(max_trials,
     env.move_to_joint_positions(target_joints)
     ee_pos,_ = env.reset()
     trial_length = 12
-    skip_to_trial = 5
+    skip_to_trial = 0
     for i in range(max_trials):
         cube_in_position_array[0] = 0
         if i < skip_to_trial:
@@ -553,7 +553,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 10, None
+    n_processes, max_trials, trial_process = 0, 1, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
