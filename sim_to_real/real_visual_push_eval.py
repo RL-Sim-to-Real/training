@@ -89,7 +89,7 @@ class Agent():
             'cartesian_position': "thesis_policies/push/params_general_cartesian_increment-position_prop_seed9.pkl",
             'cartesian_velocity': "thesis_policies/push/params_general_cartesian_increment-velocity_prop_seed5.pkl",
             'joint_position': "thesis_policies/push/params_general_joint_increment-position_prop_seed6.pkl",
-            'joint_velocity': "thesis_policies/push/params_general_joint-velocity_prop_seed1.pkl",
+            'joint_velocity': "thesis_policies/push/params_general_joint-velocity_prop_seed2.pkl",
             # 'joint_torque': "test_policies/params_general_joint-torque.pkl",
         }[control_mode]
         # if use_prop:
@@ -144,12 +144,8 @@ def camera_process(image_name, image_shape, image_dtype):
     image_shm = shared_memory.SharedMemory(name=image_name)
     img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
     while True:
-        start_time = time.time()
+
         img = camera.capture_img()
-        end_time = time.time()
-        # h, w = img.shape[:2]
-        # crop_x = 50 #(w - h) // 2
-        # img = img[:, crop_x:(w - crop_x)]  # Crop to square
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
         img = cv2.resize(img, (64, 64)) 
@@ -174,9 +170,6 @@ def rs_camera_process(image_name, image_shape, image_dtype, pipeline, align):
             continue
 
         img = np.asanyarray(color_frame.get_data())
-        # img = np.asanyarray(depth_frame.get_data())
-        # img = cv2.convertScaleAbs(img, alpha=0.10)
-        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
 
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
@@ -189,8 +182,7 @@ def rs_camera_process(image_name, image_shape, image_dtype, pipeline, align):
 
 def rs_camera_thread(img_array):
     global depth_frame, color_frame, lock
-    # image_shm = shared_memory.SharedMemory(name=image_name)
-    # img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
+
     pipeline = rs.pipeline()
     config = rs.config()
     config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
@@ -211,9 +203,6 @@ def rs_camera_thread(img_array):
             depth_frame = df
 
         img = np.asanyarray(color_frame.get_data())
-        # img = np.asanyarray(depth_frame.get_data())
-        # img = cv2.convertScaleAbs(img, alpha=0.10)
-        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
 
         cv2.imshow("Captured Image", img)
         print("Showing image")
@@ -246,37 +235,6 @@ def get_birds_eye_view(point_cam_array, env):
         # time.sleep(1)
     return angle, angle_180, is_square, pose_ee
 
-# def make_cube_upright(env, pose_ee, angle, angle_180):
-#     grasp_height = 0.04
-#     grasp_offset = 0 # degrees
-#     ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
-#     cube_ee_angle = ee_angle.copy()
-#     # cube_ee_angle[2] += -(angle if angle < 45 else angle - 90) * np.pi / 180.0
-#     cube_ee_angle[2] += -(angle_180 - 90) * np.pi / 180.0
-#     cube_ee_angle[1] -= grasp_offset * np.pi / 180.
-#     env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
-#     pose_ee[2] = grasp_height
-#     pose_ee[0] -= 0.025 # offset to be above the cube center
-#     env.move_to_pose_ee(pose_ee, ref_ee_angle=cube_ee_angle)
-#     env.grasp_object()
-#     pose_ee[2] = 0.3
-#     ee_angle_flipped = ee_angle.copy()
-#     ee_angle_flipped[2] -= np.pi
-#     env.move_to_pose_ee(pose_ee)
-#     # env.move_to_pose_ee(pose_ee, ref_ee_angle=ee_angle_flipped)
-#     # randomize the cube position
-#     cube_pos = np.array([0.48, 0.0, grasp_height + 0.04])
-#     rotated_ee_angle = ee_angle.copy()
-
-#     rotated_ee_angle[1] += (90 - 10 - grasp_offset) * np.pi / 180.
-
-#     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
-#     cube_pos[2] = grasp_height + 0.028
-#     env.move_to_pose_ee(cube_pos, ref_ee_angle=rotated_ee_angle)
-#     env.open_gripper()
-#     pose_ee[:2] = cube_pos[:2]
-#     pose_ee[2] = 0.2
-#     env.move_to_pose_ee(pose_ee)
 
 def put_cube_on_white_strip(env, angle, pose_ee):
     ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
@@ -290,16 +248,17 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     pose_ee[2] = 0.3
     # apply a small random yaw offset to the end-effector before moving away
     env.move_to_pose_ee(pose_ee)
-    # time.sleep(1)
+    
     # randomize the cube position8
-    cube_pos = np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
-    # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
+    cube_pos = np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.1, 0.1), grasp_height + 0.01])
+    
     print(f"Moving cube to new position: {cube_pos[:2]}")
 
     env.move_to_pose_ee(cube_pos)
     cube_pos[2] = grasp_height + 0.0005
     yaw_offset_deg = np.random.uniform(-45.0, 45.0)
     yaw_offset = np.deg2rad(yaw_offset_deg)
+    ee_angle = np.array(env.euler_from_quaternion(env.reset_ee_quaternion))
     random_ee_angle = ee_angle.copy()
     random_ee_angle[2] += yaw_offset
     env.move_to_pose_ee(cube_pos, ref_ee_angle=random_ee_angle)
@@ -334,7 +293,7 @@ def get_point_base(point_cam, env):
 
 def reset_cube_position(point_cam_array, env, target_joints):
     angle, angle_180, is_square, pose_ee = get_birds_eye_view(point_cam_array, env)
-    # while is_square < 0.5: # don't need this
+    # while is_square < 0.5: # don't need this for this task
     #     print("Cube is knocked over")
     #     make_cube_upright(env, pose_ee, angle, angle_180)
     #     env.move_to_joint_positions(target_joints)
@@ -432,7 +391,7 @@ def run_trials(max_trials,
         'joint_position',
         'joint_velocity',
         'cartesian_velocity',
-    ][3]
+    ][2]
 
     use_prop = True
 
@@ -443,8 +402,6 @@ def run_trials(max_trials,
     point_cam_shm = shared_memory.SharedMemory(name=point_cam_name)
     point_cam_array = np.ndarray(point_cam_shape, dtype=point_cam_dtype, buffer=point_cam_shm.buf)
 
-    # image_shm = shared_memory.SharedMemory(name=image_name)
-    # img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
     cube_in_position_shm = shared_memory.SharedMemory(name=cube_in_position_name)
     cube_in_position_array = np.ndarray(cube_in_position_shape, dtype=cube_in_position_dtype, buffer=cube_in_position_shm.buf)
 
@@ -452,19 +409,19 @@ def run_trials(max_trials,
     target_joints = np.array([-0.01266706, 0.23113158, 0.01397337, -2.11847885, -0.00837887, 2.33090511, 0.80890272])
     # target_joints = np.array([-0.00002, 0.47804, -0.00055, -1.81309, -0.00161, 2.34597, 0.78501])
     env.move_to_joint_positions(target_joints)
-
-    trial_length = 10
+    ee_pos,_ = env.reset()
+    trial_length = 12
     skip_to_trial = 0
     for i in range(max_trials):
         cube_in_position_array[0] = 0
         if i < skip_to_trial:
-            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
+            np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.1, 0.1), 0 + 0.01])
             continue
         env.move_to_joint_positions(target_joints)
         env.open_gripper()
         env.apply_joint_vel(np.zeros((7,)))
         print("Resetting cube position...")
-        reset_cube_position(point_cam_array, env, target_joints)
+        # reset_cube_position(point_cam_array, env, target_joints)
 
         # reset the robot joints to initial position again
         env.move_to_joint_positions(target_joints)
@@ -480,7 +437,7 @@ def run_trials(max_trials,
         env.logger.clear()
         init_position_ee = ee_pos.copy()
         aggregate_displacement = 0.0
-        # env.gripper.home_joints()
+       
         while True:
             # action = action_array.copy()  # Copy the action from shared memory
             proprioception = None
@@ -497,27 +454,22 @@ def run_trials(max_trials,
                 ) - 1.0
 
                 ee_height = obs['height']
-                # h_min, h_max = 0.0, 0.2
-                # ee_height_n = jp.clip(2.0 * (ee_height_n - h_min) / (h_max - h_min) - 1.0, -1.0, 1.0)
                 
                 proprioception = np.concatenate([ 
                     normalized_jp, 
                     normalized_jv,  # Include joint velocities in proprioception
                     action, ee_height], axis=-1).astype(np.float32)
-                # proprioception = np.concatenate([obs['height'], action, np.array([float(env.grasped)])], axis=0).astype(np.float32)
-                # proprioception = np.zeros((2,), dtype=np.float32)
                 print(f"Proprioception: {proprioception.shape}, {proprioception}")
             action = agent.get_action(proprioception=proprioception)
-            # action_y_z = 0.05 * action[:2] # this is the increment
+            
             print(f"Action: {action}")
 
 
-            start = time.time()
             ee_pos = env.step(action)
-            end = time.time()
+  
             print("cube_in_position:", cube_in_position_array[0])
             print("ee height:", ee_pos[2])
-            aggregate_displacement += np.linalg.norm(ee_pos[:2] - init_position_ee[:2]) * cube_in_position_array[0] * (ee_height < 0.05)
+            aggregate_displacement += np.linalg.norm(ee_pos[:2] - init_position_ee[:2]) * cube_in_position_array[0] * (ee_pos[2] < 0.055)
             init_position_ee = ee_pos.copy()
         
             if time.time() - t_start > trial_length:
@@ -526,9 +478,7 @@ def run_trials(max_trials,
             if ee_pos[0] < 0.27 or ee_pos[0] > 0.8 or ee_pos[1] > 0.35 or ee_pos[1] < -0.35 or ee_pos[2] > 0.5:
                 print(f"---- Trial {i}: Robot moved out of workspace")
                 break
-        # print(env.logger.metrics)
-        # env.logger.metrics[-1]['success'] = success
-        # env.logger.metrics[-1]['trial time'] = time.time() - t_start
+
         print("Aggregate displacement:", aggregate_displacement)
         env.logger.metrics[-1]['aggregate displacement'] = aggregate_displacement
 
@@ -579,7 +529,7 @@ def _jnt_vel_range():
 
 
 def main():
-    record_video = False
+    record_video = True
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -604,7 +554,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 10, None
+    n_processes, max_trials, trial_process = 0, 1, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
@@ -624,18 +574,18 @@ def main():
         x0 = (w - side) // 2
         img = img[y0:y0+side, x0:x0+side]
         original_img = img.copy()
-        # print("cube_in_bottom_half:", cube_in_bottom_half(cv2.cvtColor(img, cv2.COLOR_BGR2RGB).copy()))
+        
         cube_in_position_array[0] = 1 if cube_in_bottom_half(original_img.copy()) else 0 # image is BGR!
         # has_contact_array[0] = 1 if is_cube_close_to_tape(cv2.cvtColor(img, cv2.COLOR_BGR2RGB).copy())['is_close'] else 0 # expects RGB image
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
+        # continue
 
-        img = cv2.resize(img, (64, 64)) 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB 
+        cropped_img = img
+        img = cv2.resize(img, (64, 64)) 
         image_array[:] = img  # Copy the image to shared memory
 
-        # continue
-        # print(f"Time taken to capture and process image: {end_time - start_time:.3f} seconds")
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
@@ -644,7 +594,7 @@ def main():
             ext_frame = cv2.cvtColor(ext_frame, cv2.COLOR_BGR2RGB)
             # put img in the bottom left corner of ext_frame
             ext_frame[:64, :64, :] = img
-            video.append(np.concatenate([ext_frame, original_img], axis=1))
+            video.append(np.concatenate([ext_frame, cropped_img], axis=1))
             video_ts.append(time.time())
 
 
@@ -652,8 +602,7 @@ def main():
         if latest_point_cam is not None:
             point_cam = latest_point_cam
             point_cam_array[:] = point_cam
-        # print(f"Cube position (x, y, z) in camera frame: {point_cam}")
-        # if n_processes < max_trials and (trial_process is None or not trial_process.is_alive()):
+
         if n_processes == 0 and (trial_process is None or not trial_process.is_alive()):
             n_processes += 1
             trial_process = Process(target=run_trials, args=(max_trials, action_shm.name, action.shape, action.dtype,
@@ -669,7 +618,7 @@ def main():
     # store the video
     print('----------------------------------------------------------------- storing video...')
     if record_video:
-        video_fp = f'real_franka_eval_logs/videos/real_franka_eval_{datetime.now().strftime("%Y%m%d_%H%M%S")}.mp4'
+        video_fp = f'real_franka_eval_logs/videos/push/real_franka_eval_{datetime.now().strftime("%Y%m%d_%H%M%S")}.mp4'
         video = np.stack(video)
         video_fps = len(video) / (video_ts[-1] - video_ts[0])
         media.write_video(video_fp, np.array(video), fps=video_fps)
