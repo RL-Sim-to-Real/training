@@ -375,6 +375,14 @@ def cube_in_bottom_half(img: np.ndarray) -> Dict:
     in_bottom = cy >= h // 2
     return in_bottom
 
+def block_within_bounds(block_pos):
+    x_min = 0.4
+    x_max = 0.7
+    y_min = -0.2
+    y_max = 0.2
+    return float((x_min <= block_pos[0]) & (block_pos[0] <= x_max) &
+                (y_min <= block_pos[1]) & (block_pos[1] <= y_max))
+
 def run_trials(max_trials, 
                action_name, 
                action_shape, 
@@ -388,7 +396,7 @@ def run_trials(max_trials,
         'joint_position',
         'joint_velocity',
         'cartesian_velocity',
-    ][0]
+    ][2]
 
     use_prop = True
 
@@ -468,7 +476,7 @@ def run_trials(max_trials,
             print("ee height:", ee_pos[2])
             displacement = np.linalg.norm(ee_pos[:2] - init_position_ee[:2])
             print("displacement:", displacement)
-            aggregate_displacement += displacement * cube_in_position_array[0] * (ee_pos[2] < 0.0557) * (displacement > 0.003)
+            aggregate_displacement += displacement * cube_in_position_array[0] * (ee_pos[2] < 0.0557) * (displacement > 0.003) * block_within_bounds(ee_pos[:2])
             init_position_ee = ee_pos.copy()
         
             if time.time() - t_start > trial_length:
@@ -553,7 +561,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 1, None
+    n_processes, max_trials, trial_process = 0, 10, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()

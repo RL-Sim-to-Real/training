@@ -86,11 +86,10 @@ class Agent():
         ppo_params.network_factory = network_factory
 
         policy_fn = {
-            'cartesian_position': "thesis_policies/pick/params_general_cartesian_increment-position_prop_seed7.pkl",
-            'cartesian_velocity': "thesis_policies/pick/params_general_cartesian_increment-velocity_prop_seed7.pkl",
-            'joint_position': "thesis_policies/pick/params_general_joint_increment-position_prop_seed4.pkl",
-            'joint_velocity': "thesis_policies/pick/params_general_joint-velocity_prop_seed4.pkl",
-            'joint_torque': "test_policies/params_general_joint-torque.pkl",
+            'cartesian_position': "thesis_policies/pick/params_general_cartesian_increment-position_prop_seed0.pkl",
+            'cartesian_velocity': "thesis_policies/pick/params_general_cartesian_increment-velocity_prop_seed5.pkl",
+            'joint_position': "thesis_policies/pick/params_general_joint_increment-position_prop_seed7.pkl",
+            'joint_velocity': "thesis_policies/pick/params_general_joint-velocity_prop_seed2.pkl",
         }[control_mode]
         # if use_prop:
         #     # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
@@ -230,9 +229,7 @@ def rs_camera_process(image_name, image_shape, image_dtype, pipeline, align):
             continue
 
         img = np.asanyarray(color_frame.get_data())
-        # img = np.asanyarray(depth_frame.get_data())
-        # img = cv2.convertScaleAbs(img, alpha=0.10)
-        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
+
 
         cv2.imshow("Captured Image", img)
         cv2.waitKey(1)  # Use 1 instead of 0 to avoid blocking
@@ -267,9 +264,7 @@ def rs_camera_thread(img_array):
             depth_frame = df
 
         img = np.asanyarray(color_frame.get_data())
-        # img = np.asanyarray(depth_frame.get_data())
-        # img = cv2.convertScaleAbs(img, alpha=0.10)
-        # img = cv2.applyColorMap(img, cv2.COLORMAP_JET)
+
 
         cv2.imshow("Captured Image", img)
         print("Showing image")
@@ -352,7 +347,7 @@ def put_cube_on_white_strip(env, angle, pose_ee):
     env.move_to_pose_ee(pose_ee)
     # time.sleep(1)
     # randomize the cube position
-    cube_pos = np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), grasp_height + 0.01])
+    cube_pos = np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.1, 0.1), grasp_height + 0.01])
     # cube_pos = np.array([0.55, 0.0, 0.053]) # for debugging
     print(f"Moving cube to new position: {cube_pos[:2]}")
     env.move_to_pose_ee(cube_pos)
@@ -410,12 +405,11 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         'joint_position',
         'joint_velocity',
         'cartesian_velocity', 
-        'joint_torque', # deprecated
     ][1]
     grasp_threshold_dict = {
         'cartesian_position': -0.2,
-        'joint_position': -0.25,
-        'joint_velocity': -0.2,
+        'joint_position': -0.2,
+        'joint_velocity': -0.4,
         'cartesian_velocity': -0.2,
     }
 
@@ -445,7 +439,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
         env.open_gripper()
         env.move_to_joint_positions(target_joints)
         env.apply_joint_vel(np.zeros((7,)))
-        # reset_cube_position(point_cam_array, env, target_joints) # make sure to uncomment
+        reset_cube_position(point_cam_array, env, target_joints) # make sure to uncomment
 
         # reset the robot joints to initial position again
         env.move_to_joint_positions(target_joints)
@@ -587,7 +581,7 @@ def _jnt_vel_range():
 
 
 def main():
-    record_video = True
+    record_video = False
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -606,18 +600,11 @@ def main():
     point_cam_shm = shared_memory.SharedMemory(create=True, size=point_cam.nbytes)
     point_cam_array = np.ndarray(buffer=point_cam_shm.buf, dtype=np.float32, shape=point_cam.shape)
     action_array[:] = action  # Copy the initial action to shared memory
-    # p = Process(target=agent_process, args=(action_shm.name, action.shape, action.dtype,
-    #                                            image_shm.name, dummy_img.shape, dummy_img.dtype))
-    # c = Process(target=camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype))
-    # c = Process(target=rs_camera_process, args=(image_shm.name, dummy_img.shape, dummy_img.dtype, pipeline, align))
-    # c = threading.Thread(target=rs_camera_thread, args=(image_array,), daemon=True)
-    # c.start()  # Start the camera process
-    # p.start()
 
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 1, None
+    n_processes, max_trials, trial_process = 0, 12, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
