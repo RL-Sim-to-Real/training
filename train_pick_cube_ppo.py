@@ -278,7 +278,7 @@ def main(argv):
   print(f"Experiment name: {exp_name}")
 
   # Set up logging directory
-  logdir = epath.Path("logs").resolve() / exp_name
+  logdir = epath.Path("logs-pick").resolve() / exp_name
   if logdir.exists():
     shutil.rmtree(logdir)
   logdir.mkdir(parents=True, exist_ok=True)
