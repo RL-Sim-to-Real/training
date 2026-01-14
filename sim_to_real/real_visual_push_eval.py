@@ -86,15 +86,12 @@ class Agent():
         ppo_params.network_factory = network_factory
 
         policy_fn = {
-            'cartesian_position': "thesis_policies/push/params_general_cartesian_increment-position_prop_seed9.pkl",
-            'cartesian_velocity': "thesis_policies/push/params_general_cartesian_increment-velocity_prop_seed5.pkl",
-            'joint_position': "thesis_policies/push/params_general_joint_increment-position_prop_seed6.pkl",
-            'joint_velocity': "thesis_policies/push/params_general_joint-velocity_prop_seed2.pkl",
-            # 'joint_torque': "test_policies/params_general_joint-torque.pkl",
+            'cartesian_position': "thesis_policies/push/params_general_cartesian_increment-position_prop_seed0.pkl",
+            'cartesian_velocity': "thesis_policies/push/params_general_cartesian_increment-velocity_prop_seed9.pkl",
+            'joint_position': "thesis_policies/push/params_general_joint_increment-position_prop_seed7.pkl",
+            'joint_velocity': "thesis_policies/push/params_general_joint-velocity_prop_seed1.pkl",
         }[control_mode]
-        # if use_prop:
-        #     # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
-        #     policy_fn = policy_fn.replace('.pkl', '_prop.pkl')
+
         with open(policy_fn, "rb") as f:
             params = pickle.load(f)
 
@@ -378,6 +375,14 @@ def cube_in_bottom_half(img: np.ndarray) -> Dict:
     in_bottom = cy >= h // 2
     return in_bottom
 
+def block_within_bounds(block_pos):
+    x_min = 0.4
+    x_max = 0.7
+    y_min = -0.2
+    y_max = 0.2
+    return float((x_min <= block_pos[0]) & (block_pos[0] <= x_max) &
+                (y_min <= block_pos[1]) & (block_pos[1] <= y_max))
+
 def run_trials(max_trials, 
                action_name, 
                action_shape, 
@@ -421,7 +426,7 @@ def run_trials(max_trials,
         env.open_gripper()
         env.apply_joint_vel(np.zeros((7,)))
         print("Resetting cube position...")
-        # reset_cube_position(point_cam_array, env, target_joints)
+        reset_cube_position(point_cam_array, env, target_joints)
 
         # reset the robot joints to initial position again
         env.move_to_joint_positions(target_joints)
@@ -469,7 +474,9 @@ def run_trials(max_trials,
   
             print("cube_in_position:", cube_in_position_array[0])
             print("ee height:", ee_pos[2])
-            aggregate_displacement += np.linalg.norm(ee_pos[:2] - init_position_ee[:2]) * cube_in_position_array[0] * (ee_pos[2] < 0.055)
+            displacement = np.linalg.norm(ee_pos[:2] - init_position_ee[:2])
+            print("displacement:", displacement)
+            aggregate_displacement += displacement * cube_in_position_array[0] * (ee_pos[2] < 0.0557) * (displacement > 0.003) * block_within_bounds(ee_pos[:2])
             init_position_ee = ee_pos.copy()
         
             if time.time() - t_start > trial_length:
@@ -529,7 +536,7 @@ def _jnt_vel_range():
 
 
 def main():
-    record_video = True
+    record_video = False
     if record_video:
         video, video_ts = [], []
         ext_cam = Camera(cam_index=6)
@@ -554,7 +561,7 @@ def main():
     # main loop
     fps = 30
     pipeline, align = prepare_realsense(fps)
-    n_processes, max_trials, trial_process = 0, 1, None
+    n_processes, max_trials, trial_process = 0, 10, None
     while True:
         t0 = time.time()
         frames = pipeline.wait_for_frames()
