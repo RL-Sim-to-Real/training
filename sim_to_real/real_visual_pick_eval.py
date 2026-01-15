@@ -86,10 +86,10 @@ class Agent():
         ppo_params.network_factory = network_factory
 
         policy_fn = {
-            'cartesian_position': "thesis_policies/pick/params_general_cartesian_increment-position_prop_seed0.pkl",
-            'cartesian_velocity': "thesis_policies/pick/params_general_cartesian_increment-velocity_prop_seed5.pkl",
-            'joint_position': "thesis_policies/pick/params_general_joint_increment-position_prop_seed7.pkl",
-            'joint_velocity': "thesis_policies/pick/params_general_joint-velocity_prop_seed2.pkl",
+            'cartesian_position': "thesis_policies/pick/params_general_cartesian_increment-position_prop_seed9.pkl",
+            'cartesian_velocity': "thesis_policies/pick/params_general_cartesian_increment-velocity_prop_seed4.pkl",
+            'joint_position': "thesis_policies/pick/params_general_joint_increment-position_prop_seed4.pkl",
+            'joint_velocity': "thesis_policies/pick/params_general_joint-velocity_prop_seed9.pkl",
         }[control_mode]
         # if use_prop:
         #     # policy_fn = policy_fn.replace('test_policies/', 'test_policies/qvel/')
@@ -136,62 +136,6 @@ class Agent():
         self.image_shm.close()
         self.image_shm.unlink()
 
-# def agent_process(action_name, action_shape, action_dtype, 
-#                   image_name, image_shape, image_dtype):
-#     np.set_printoptions(precision=3, suppress=True, linewidth=100)
-
-#     env_name = "PandaPickCubeCartesianModified"
-
-#     # Rasterizer is less feature-complete than ray-tracing backend but stable
-#     layer_size = 256
-
-
-#     network_factory = functools.partial(
-#         ppo_networks_vision.make_ppo_networks_vision,
-#         policy_hidden_layer_sizes=[layer_size, layer_size, layer_size],
-#         value_hidden_layer_sizes= [layer_size, layer_size, layer_size],
-#         # activation=linen.relu, # only works with default activation right now
-#         normalise_channels=True,
-#     )
-
-#     ppo_params = manipulation_params.brax_vision_ppo_config(env_name)
-
-#     del ppo_params.network_factory
-#     ppo_params.network_factory = network_factory
-
-
-#     # Load the params object from the pickle file
-#     # policy_fn = "policies/policy_params_general_3d_256_image_aug_black_white_strip.pkl"
-#     # policy_fn = "test_policies/params_general_cartesian_increment-position.pkl"
-#     policy_fn = "test_policies/params_general_cartesian_increment-position_prop.pkl"
-#     with open(policy_fn, "rb") as f:
-#         params = pickle.load(f)
-
-#     inference_fn = make_inference_fn(network_factory=network_factory, include_prop='prop' in policy_fn)
-
-#     jit_inference_fn = jax.jit(inference_fn(params, deterministic=True))
-#     action_shm = shared_memory.SharedMemory(name=action_name)
-#     action_array = np.ndarray(action_shape, dtype=action_dtype, buffer=action_shm.buf)
-#     image_shm = shared_memory.SharedMemory(name=image_name)
-#     img_array = np.ndarray(image_shape, dtype=image_dtype, buffer=image_shm.buf)
-#     key = jax.random.PRNGKey(0)
-#     try:
-#         while True:
-#             key, _ = jax.random.split(key)
-#             obs = {'pixels/view_0': img_array.copy() /255.0}
-#             if 'prop' in policy_fn:
-#                 obs['_prop'] = np.array([0.0]*(16 + action_shape), dtype=np.float32)
-#             t0 = time.time()
-#             action, _ = jit_inference_fn(obs, key) # imperical inference time is 0.016
-#             print(f"Inference time: {(time.time() - t0) * 1000.:.3f} ms")
-#             # print(f"Action: {action}")
-#             time.sleep(0.25) # set the cycle time to 40 ms
-#             action_array[:] = action
-#     except KeyboardInterrupt:
-#         print("Agent process interrupted by user.")
-
-#     action_shm.close()
-#     image_shm.close()
 
 def camera_process(image_name, image_shape, image_dtype):
     camera = Camera(cam_index=4)
@@ -375,11 +319,7 @@ def get_point_base(point_cam, env):
     with open(T_ee_camera_file, "r") as f:
         T_ee_camera = np.array(json.load(f))
     T_base_camera = T_base_ee @ T_ee_camera
-    # print('camera position:', T_base_camera[:3, 3])
-    # T_base_camera = T_base_ee @ np.linalg.inv(T_ee_camera)
-    # T_base_camera = np.linalg.inv(T_base_ee @ np.linalg.inv(T_ee_camera))
-    # T_base_camera = T_ee_camera @ T_base_ee
-    # T_base_camera = np.linalg.inv(T_ee_camera @ T_base_ee)
+
     point_cam_homog = np.array([point_cam[0], point_cam[1], point_cam[2], 1.0])
     # point_cam_homog = np.array([point_cam[1], -point_cam[0], -point_cam[2], 1.0])
     # point_ee = np.linalg.inv(T_ee_camera) @ point_cam_homog
@@ -402,14 +342,14 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
     save_logs = True
     control_mode = [
         'cartesian_position',
+        'cartesian_velocity', 
         'joint_position',
         'joint_velocity',
-        'cartesian_velocity', 
-    ][1]
+    ][0]
     grasp_threshold_dict = {
-        'cartesian_position': -0.2,
-        'joint_position': -0.2,
-        'joint_velocity': -0.4,
+        'cartesian_position': -0.1,
+        'joint_position': -0.25,
+        'joint_velocity': -0.2,
         'cartesian_velocity': -0.2,
     }
 
@@ -430,7 +370,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
     max_grasp_attempts = 10
 
     trial_length = 30
-    skip_to_trial = 0
+    skip_to_trial = 10
     for i in range(max_trials):
         if i < skip_to_trial:
             np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
@@ -485,7 +425,7 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             action = agent.get_action(proprioception=proprioception)
             # action_y_z = 0.05 * action[:2] # this is the increment
             print(f"Action: {action}")
-            if (action[-1] < grasp_threshold_dict[control_mode] and not env.grasped): # grasp it only once
+            if (action[-1] < grasp_threshold_dict[control_mode] and not env.grasped and ee_height_n < 0.19): # grasp it only once
                 print("attempting grasp")
                 env.grasped = env.grasp_object(wait_for_result=True)
                 print("grasped:", env.grasped)
@@ -540,7 +480,10 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
             fp = Path(f'real_franka_eval_logs/pick/{control_mode}_use_prop_{use_prop}_trial_{i}.pkl.csv')
             fp.parent.mkdir(parents=True, exist_ok=True)
             env.logger.save(fp)
+            
 
+        env.move_to_joint_positions(target_joints)
+        env.apply_joint_vel(np.zeros((7,)))
     env.reset()
     env.close()
 
@@ -668,7 +611,7 @@ def main():
     # store the video
     print('----------------------------------------------------------------- storing video...')
     if record_video:
-        video_fp = f'real_franka_eval_logs/videos/real_franka_eval_{datetime.now().strftime("%Y%m%d_%H%M%S")}.mp4'
+        video_fp = f'real_franka_eval_logs/videos/pick/real_franka_eval_{datetime.now().strftime("%Y%m%d_%H%M%S")}.mp4'
         video = np.stack(video)
         video_fps = len(video) / (video_ts[-1] - video_ts[0])
         media.write_video(video_fp, np.array(video), fps=video_fps)
