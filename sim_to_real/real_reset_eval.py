@@ -206,7 +206,7 @@ def put_cube_on_white_strip(env, angle, pose_ee, begin_time):
     pose_ee[2] = 0.2
     env.move_to_pose_ee(pose_ee)
     env.logger.metrics[-1]['success'] = True
-    env.logger.metrics[-1]['Trial'] = time.time() - begin_time
+    env.logger.metrics[-1]['trial time'] = time.time() - begin_time
     # Don't log after this point since we are placing the cube
     # randomize the cube position
     cube_pos = np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.1, 0.1), grasp_height + 0.01])
@@ -278,8 +278,8 @@ def run_trials(max_trials, action_name, action_shape, action_dtype, point_cam_na
     max_grasp_attempts = 10
 
     trial_length = 30
-    skip_to_trial = 0
-    for i in range(max_trials):
+    skip_to_trial = 1
+    for i in range(2):
         if i < skip_to_trial:
             np.array([np.random.uniform(0.52, 0.62), np.random.uniform(-0.095, 0.095), 0 + 0.01])
             continue
