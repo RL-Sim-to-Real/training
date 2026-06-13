@@ -44,16 +44,28 @@ ImportError: /lib/x86_64-linux-gnu/libp11-kit.so.0: undefined symbol: ffi_type_p
  ln -sf /usr/lib/x86_64-linux-gnu/libffi.so.7 ~/anaconda3/envs/[your env name here]/lib/libffi.so.7
 ```
 
-## Installation Guide 
-Clone the following repos
+## Installation Guide
+
+Use this repository with its `dependencies/` submodules instead of cloning each dependency manually.
+
+Clone with submodules:
 ```
-git@github.com:ICRA2026/brax.git
-git@github.com:ICRA2026/mujoco_playground.git
-git@github.com:azimi99/madrona_mjx.git
-git@github.com:ICRA2026/training.git
+git clone --recurse-submodules git@github.com:RL-Sim-to-Real/training.git
+cd training
 ```
 
-Start by installing Madrona first and ensure you have `jax[cuda_local]<=0.5.3` and your `flax <= 0.10.6`.
+If you already cloned the repository, initialize and update submodules:
+```
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+This populates:
+- `dependencies/brax`
+- `dependencies/mujoco_playground`
+- `dependencies/madrona_mjx`
+
+Start by installing Madrona first (`dependencies/madrona_mjx`) and ensure you have `jax[cuda_local]<=0.5.3` and your `flax <= 0.10.6`.
 **Note**: When building Madrona, ensure you use `cmake -DLOAD_VULKAN=OFF ..`
 
 ## For compute canada
