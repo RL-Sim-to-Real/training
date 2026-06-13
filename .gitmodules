@@ -1,0 +1,9 @@
+[submodule "dependencies/brax"]
+	path = dependencies/brax
+	url = git@github.com:RL-Sim-to-Real/brax.git
+[submodule "dependencies/mujoco_playground"]
+	path = dependencies/mujoco_playground
+	url = git@github.com:RL-Sim-to-Real/mujoco_playground.git
+[submodule "dependencies/madrona_mjx"]
+	path = dependencies/madrona_mjx
+	url = git@github.com:RL-Sim-to-Real/madrona_mjx.git
