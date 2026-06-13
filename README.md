@@ -67,6 +67,7 @@ This populates:
 
 Start by installing Madrona first (`dependencies/madrona_mjx`) and ensure you have `jax[cuda_local]<=0.5.3` and `flax<=0.10.6`.
 **Note**: When building Madrona, ensure you use `cmake -DLOAD_VULKAN=OFF ..`
+**Tested with**: CUDA 12.5
 
 ## For compute canada
 
