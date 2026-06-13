@@ -65,7 +65,7 @@ This populates:
 - `dependencies/mujoco_playground`
 - `dependencies/madrona_mjx`
 
-Start by installing Madrona first (`dependencies/madrona_mjx`) and ensure you have `jax[cuda_local]<=0.5.3` and your `flax <= 0.10.6`.
+Start by installing Madrona first (`dependencies/madrona_mjx`) and ensure you have `jax[cuda_local]<=0.5.3` and `flax<=0.10.6`.
 **Note**: When building Madrona, ensure you use `cmake -DLOAD_VULKAN=OFF ..`
 
 ## For compute canada
