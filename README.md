@@ -95,6 +95,32 @@ without training. Restore with the same network/observation settings (including
 local research artifacts only. Legacy checkpoints from the old custom Brax
 network are not guaranteed to match current Brax architectures.
 
+## Debugging notebooks
+
+`debugging/pandapickcube.ipynb` and `debugging/pandapushcube.ipynb` use the same
+patched environments and seeded domain randomization as the training launcher.
+Install their kernel and execution tools with:
+
+```bash
+uv sync --locked --extra cuda --group notebooks
+```
+
+Select this repository's `.venv` kernel and run the cells in order. Defaults use
+four GPU worlds, RGB observations, and a short PPO run, followed by checkpoint
+reload, policy inference, and video export. Outputs go to `results/notebooks`.
+For CPU state debugging, set `VISION = False` and `IMPL = "jax"` in the settings
+cell; install with `uv sync --locked --group notebooks`.
+
+To execute both default GPU notebooks in fresh kernels:
+
+```bash
+task notebooks:validate DEVICE_ID=0
+```
+
+Executed copies, including cell outputs, are saved in `results/notebook-validation`.
+The source notebooks are kept free of stale outputs. These short runs check the
+pipeline; they do not establish policy learning or task success.
+
 ## Migration details and research comparability
 
 - Both launchers now honor environment count, vision, randomization, PPO and
