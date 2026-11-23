@@ -1,0 +1,262 @@
+{
+  "benchmark_runs": [
+    {
+      "task": "PandaPickCuboid",
+      "action": "cartesian_increment",
+      "actuator": "position",
+      "action_scale": 0.05,
+      "directory": "results/PandaPickCuboid-cartesian_increment-position-seed1-20261120T165449245015Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 90.51505601900863,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    },
+    {
+      "task": "PandaPickCuboid",
+      "action": "joint_increment",
+      "actuator": "position",
+      "action_scale": 0.05,
+      "directory": "results/PandaPickCuboid-joint_increment-position-seed1-20261120T165813699432Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 62.03771920999861,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    },
+    {
+      "task": "PandaPickCuboid",
+      "action": "cartesian_increment",
+      "actuator": "velocity",
+      "action_scale": 0.05,
+      "directory": "results/PandaPickCuboid-cartesian_increment-velocity-seed1-20261120T165631166084Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 91.0521243380208,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    },
+    {
+      "task": "PandaPickCuboid",
+      "action": "joint",
+      "actuator": "velocity",
+      "action_scale": 1.0,
+      "directory": "results/PandaPickCuboid-joint-velocity-seed1-20261120T165927040148Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 61.0272419769899,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    },
+    {
+      "task": "PandaPushCuboid",
+      "action": "cartesian_increment",
+      "actuator": "position",
+      "action_scale": 0.05,
+      "directory": "results/PandaPushCuboid-cartesian_increment-position-seed1-20261120T170039446964Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 86.39935823902488,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    },
+    {
+      "task": "PandaPushCuboid",
+      "action": "joint_increment",
+      "actuator": "position",
+      "action_scale": 0.05,
+      "directory": "results/PandaPushCuboid-joint_increment-position-seed1-20261120T170354638342Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 56.48480584099889,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    },
+    {
+      "task": "PandaPushCuboid",
+      "action": "cartesian_increment",
+      "actuator": "velocity",
+      "action_scale": 0.05,
+      "directory": "results/PandaPushCuboid-cartesian_increment-velocity-seed1-20261120T170217471140Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 85.78405039099744,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    },
+    {
+      "task": "PandaPushCuboid",
+      "action": "joint",
+      "actuator": "velocity",
+      "action_scale": 1.0,
+      "directory": "results/PandaPushCuboid-joint-velocity-seed1-20261120T170502520417Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 56.091932162002195,
+        "rollout_steps": 4,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      },
+      "video_shape": [
+        4,
+        64,
+        64,
+        3
+      ]
+    }
+  ],
+  "parallel_simulation": [
+    {
+      "task": "PandaPickCuboid",
+      "impl": "warp",
+      "vision": true,
+      "domain_randomization": true,
+      "seed": 1,
+      "num_envs": 1024,
+      "steps": 32,
+      "compile_seconds": 16.724887570017017,
+      "elapsed_seconds": 9.416327480983455,
+      "env_steps_per_second": 3479.9129561048003,
+      "physics_substeps_per_control_step": 10,
+      "devices": [
+        "cuda:0"
+      ]
+    },
+    {
+      "task": "PandaPushCuboid",
+      "impl": "warp",
+      "vision": true,
+      "domain_randomization": true,
+      "seed": 1,
+      "num_envs": 1024,
+      "steps": 32,
+      "compile_seconds": 15.981477859022561,
+      "elapsed_seconds": 8.028069730993593,
+      "env_steps_per_second": 4081.6785476456585,
+      "physics_substeps_per_control_step": 10,
+      "devices": [
+        "cuda:0"
+      ]
+    }
+  ],
+  "playground_patch_sha256": "621358fde4dcb18c00cb4de9d1017e72579f53064e5e4349f743d54e3b277e92",
+  "note": "Short functional checks; not learning-convergence or reproduction of paper scores. Throughput measured with other validation jobs active.",
+  "checks": {
+    "unit_and_native": 12,
+    "cpu_simulator": 4,
+    "gpu_vision": 4
+  },
+  "additional_runs": [
+    {
+      "name": "default-network-push",
+      "directory": "results/PandaPushCuboid-cartesian_increment-position-seed1-20261120T165726627635Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 91.52040238099289,
+        "rollout_steps": 4,
+        "num_envs": 32,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      }
+    },
+    {
+      "name": "restore-policy",
+      "directory": "results/PandaPickCuboid-cartesian_increment-position-seed1-20261120T165705002027Z-evaluation",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 37.95461445397814,
+        "rollout_steps": 8,
+        "num_envs": 2,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      }
+    },
+    {
+      "name": "larger-pick",
+      "directory": "results/PandaPickCuboid-cartesian_increment-position-seed1-20261123T170640779868Z",
+      "validation": {
+        "status": "passed",
+        "elapsed_seconds": 98.95830207999097,
+        "rollout_steps": 8,
+        "num_envs": 128,
+        "impl": "warp",
+        "vision": true,
+        "domain_randomization": true
+      }
+    }
+  ]
+}

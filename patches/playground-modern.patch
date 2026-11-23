@@ -1,0 +1,483 @@
+diff --git a/mujoco_playground/_src/manipulation/franka_emika_panda/pick.py b/mujoco_playground/_src/manipulation/franka_emika_panda/pick.py
+index bd3f903..8d3980d 100644
+--- a/mujoco_playground/_src/manipulation/franka_emika_panda/pick.py
++++ b/mujoco_playground/_src/manipulation/franka_emika_panda/pick.py
+@@ -169,6 +169,9 @@ class PandaPickCube(panda.PandaBase):
+ 
+     return state
+ 
++  def _colliding(self, data, geom1, geom2):
++    return collision.geoms_colliding(data, geom1, geom2)
++
+   def _get_reward(self, data: mjx.Data, info: Dict[str, Any]) -> Dict[str, Any]:
+     target_pos = info["target_pos"]
+     box_pos = data.xpos[self._obj_body]
+@@ -189,7 +192,7 @@ class PandaPickCube(panda.PandaBase):
+ 
+     # Check for collisions with the floor
+     hand_floor_collision = [
+-        collision.geoms_colliding(data, self._floor_geom, g)
++        self._colliding(data, self._floor_geom, g)
+         for g in [
+             self._left_finger_geom,
+             self._right_finger_geom,
+diff --git a/mujoco_playground/_src/manipulation/franka_emika_panda/pick_cartesian_modified.py b/mujoco_playground/_src/manipulation/franka_emika_panda/pick_cartesian_modified.py
+index 798197e..cf0d966 100644
+--- a/mujoco_playground/_src/manipulation/franka_emika_panda/pick_cartesian_modified.py
++++ b/mujoco_playground/_src/manipulation/franka_emika_panda/pick_cartesian_modified.py
+@@ -27,6 +27,7 @@ import numpy as np
+ 
+ from mujoco_playground._src.manipulation.franka_emika_panda.actuator import actuator_map
+ from mujoco_playground._src import collision
++from mujoco_playground._src import modern_backend
+ from mujoco_playground._src import mjx_env
+ from mujoco_playground._src.manipulation.franka_emika_panda import panda
+ from mujoco_playground._src.manipulation.franka_emika_panda import panda_kinematics
+@@ -49,6 +50,7 @@ def default_vision_config() -> config_dict.ConfigDict:
+ 
+ def default_config():
+   config = config_dict.create(
++      impl="jax",
+       ctrl_dt=0.04,
+       sim_dt=0.004,
+       episode_length=200,
+@@ -237,7 +239,7 @@ class PandaPickCuboid(pick.PandaPickCube):
+ 
+     mj_model = self.modify_model(
+         mujoco.MjModel.from_xml_string(
+-            xml_path.read_text(), assets=panda.get_assets(actuator=config.actuator)
++            modern_backend.add_contact_sensors(xml_path.read_text()), assets=panda.get_assets(actuator=config.actuator)
+         )
+     )
+ 
+@@ -262,9 +264,11 @@ class PandaPickCuboid(pick.PandaPickCube):
+       print(f"Error loading overlay image: {e}")
+ 
+     mj_model.opt.timestep = config.sim_dt
++    if config.impl == 'warp':
++      mj_model.opt.ls_iterations = 32
+ 
+     self._mj_model = mj_model
+-    self._mjx_model = mjx.put_model(mj_model)
++    self._mjx_model = mjx.put_model(mj_model, impl=config.impl)
+ 
+     # Set gripper in sight of camera
+     self._post_init(obj_name='box', keyframe='low_home')
+@@ -272,30 +276,12 @@ class PandaPickCuboid(pick.PandaPickCube):
+     self._max_torque = 8.0 # for torque control
+     self._gear = GEAR
+ 
++    self._contact_sensors = modern_backend.contact_sensor_addresses(mj_model)
+     if self._vision:
+-      try:
+-        # pylint: disable=import-outside-toplevel
+-        from madrona_mjx.renderer import BatchRenderer  # pytype: disable=import-error
+-      except ImportError:
+-        warnings.warn(
+-            'Madrona MJX not installed. Cannot use vision with'
+-            ' PandaPickCubeCartesian#D.'
+-        )
+-        return
+-      self.renderer = BatchRenderer(
+-          m=self._mjx_model,
+-          gpu_id=self._config.vision_config.gpu_id,
+-          num_worlds=self._config.vision_config.render_batch_size,
+-          batch_render_view_width=self._config.vision_config.render_width,
+-          batch_render_view_height=self._config.vision_config.render_height,
+-          enabled_geom_groups=np.asarray(
+-              self._config.vision_config.enabled_geom_groups
+-          ),
+-          enabled_cameras=None,  # Use all cameras.
+-          add_cam_debug_geo=False,
+-          use_rasterizer=self._config.vision_config.use_rasterizer,
+-          viz_gpu_hdls=None,
+-      )
++      self.renderer = modern_backend.WarpRenderer(mj_model, config)
++
++  def _colliding(self, data, geom1, geom2):
++    return data.sensordata[self._contact_sensors[tuple(sorted((geom1, geom2)))]] < 0
+ 
+   def _post_init(self, obj_name, keyframe):
+     super()._post_init(obj_name, keyframe)
+@@ -399,6 +385,8 @@ class PandaPickCuboid(pick.PandaPickCube):
+         init_q,
+         jp.zeros(self._mjx_model.nv, dtype=float),
+         ctrl=init_ctrl0,
++        native_model=self._mj_model,
++        nworld=self._config.vision_config.render_batch_size,
+     )
+     
+     # reposition the white strip to be under the end effector
+@@ -456,7 +444,7 @@ class PandaPickCuboid(pick.PandaPickCube):
+     reward, done = jp.zeros(2)
+ 
+     obs = self._get_obs(data, info)
+-    obs = jp.concat([obs, jp.zeros(1), jp.zeros(3)], axis=0)
++    obs = jp.concat([obs, jp.zeros(1), jp.zeros(self.action_size)], axis=0)
+ 
+     
+ 
+@@ -470,18 +458,17 @@ class PandaPickCuboid(pick.PandaPickCube):
+       )
+       info.update({'brightness': brightness})
+       info.update({'rng_img': rng_img}) 
+-      render_token, rgb, _ = self.renderer.init(data, self._mjx_model)
+-      info.update({'render_token': render_token})
++      rgb, data = self.renderer.render(self._mjx_model, data)
+ 
+       obs = jp.asarray(rgb[0][..., :3], dtype=jp.float32) / 255.0
+       obs = adjust_brightness(obs, brightness)
+       obs = augment_image(rng_img, img=obs, overlay=self._overlay)
+       obs = {'pixels/view_0': obs}
+-      grasp = collision.geoms_colliding(data, self._box_geom, self._left_finger_geom) &\
+-          collision.geoms_colliding(data, self._box_geom, self._right_finger_geom)
++      grasp = self._colliding(data, self._box_geom, self._left_finger_geom) &\
++          self._colliding(data, self._box_geom, self._right_finger_geom)
+       if self._proprioception:
+ 
+-        ee_height = data.xpos[self._left_finger_geom][2]
++        ee_height = data.geom_xpos[self._left_finger_geom][2]
+         joint_p = data.qpos[:7]  + jax.random.normal(rng, (7,)) * 0.1 # add noise
+         normalized_jp = 2 * (joint_p - jp.array(self._jnt_range())[:, 0]) / (
+           jp.array(self._jnt_range())[:, 1] - jp.array(self._jnt_range())[:, 0]
+@@ -536,11 +523,7 @@ class PandaPickCuboid(pick.PandaPickCube):
+     swapped_data = state.data.replace(
+         qpos=self._guide_q, ctrl=self._guide_ctrl
+     )  # help hit the terminal sparse reward.
+-    data = jax.tree_util.tree_map(
+-        lambda x, y: (1 - to_sample) * x + to_sample * y,
+-        state.data,
+-        swapped_data,
+-    )
++    data = state.data.where(to_sample, swapped_data)
+ 
+     # Cartesian control
+ 
+@@ -606,7 +589,7 @@ class PandaPickCuboid(pick.PandaPickCube):
+     }
+ 
+     # Penalize collision with box.
+-    hand_box = collision.geoms_colliding(data, self._box_geom, self._hand_geom)
++    hand_box = self._colliding(data, self._box_geom, self._hand_geom)
+     raw_rewards['no_box_collision'] = jp.where(hand_box, 0.0, 1.0)
+ 
+     total_reward = jp.clip(sum(rewards.values()), -1e4, 1e4)
+@@ -637,11 +620,11 @@ class PandaPickCuboid(pick.PandaPickCube):
+     out_of_bounds = jp.any(jp.abs(box_pos) > 1.0)
+     out_of_bounds |= box_pos[2] < 0.0
+     state.metrics.update(out_of_bounds=out_of_bounds.astype(float))
+-    finger_collision: bool = collision.geoms_colliding(data, self._box_geom, self._left_finger_geom) ^\
+-        collision.geoms_colliding(data, self._box_geom, self._right_finger_geom) # if it's not grasping it's a collisiong
++    finger_collision: bool = self._colliding(data, self._box_geom, self._left_finger_geom) ^\
++        self._colliding(data, self._box_geom, self._right_finger_geom) # if it's not grasping it's a collisiong
+     state.metrics.update(cube_collision=(hand_box|finger_collision).astype(float)) # log collision only if lift wasn't successfull
+     hand_floor_collision = [
+-        collision.geoms_colliding(data, self._floor_geom, g)
++        self._colliding(data, self._floor_geom, g)
+         for g in [
+             self._left_finger_geom,
+             self._right_finger_geom,
+@@ -689,10 +672,10 @@ class PandaPickCuboid(pick.PandaPickCube):
+     obs = self._get_obs(data, state.info)
+     obs = jp.concat([obs, no_soln.reshape(1), action], axis=0)
+   
+-    grasp = collision.geoms_colliding(data, self._box_geom, self._left_finger_geom) &\
+-        collision.geoms_colliding(data, self._box_geom, self._right_finger_geom)
++    grasp = self._colliding(data, self._box_geom, self._left_finger_geom) &\
++        self._colliding(data, self._box_geom, self._right_finger_geom)
+     if self._vision:
+-      _, rgb, _ = self.renderer.render(state.info['render_token'], data)
++      rgb, data = self.renderer.render(self._mjx_model, data)
+       obs = jp.asarray(rgb[0][..., :3], dtype=jp.float32) / 255.0
+       obs = adjust_brightness(obs, state.info['brightness'])
+       # augment image
+@@ -702,7 +685,7 @@ class PandaPickCuboid(pick.PandaPickCube):
+       if self._proprioception:
+         state.info['rng'], rng_prop = jax.random.split(state.info['rng'])
+ 
+-        ee_height = data.xpos[self._left_finger_geom][2]
++        ee_height = data.geom_xpos[self._left_finger_geom][2]
+         joint_p = data.qpos[:7] + jax.random.normal(rng_prop, (7,)) * 0.1
+         joint_v = data.qvel[:7] + jax.random.normal(rng_prop, (7,)) * 0.1
+         normalized_jv = 2 * (joint_v - jp.array(self._jnt_vel_range())[:, 0]) / (
+@@ -989,7 +972,7 @@ if __name__ == '__main__':
+ 
+   # # Load the model with assets
+   # mj_model = mujoco.MjModel.from_xml_string(
+-  #     xml_path.read_text(), assets=panda.get_assets(actuator="torque")
++  #     modern_backend.add_contact_sensors(xml_path.read_text()), assets=panda.get_assets(actuator="torque")
+   # )
+ 
+   # mj_data = mujoco.MjData(mj_model)
+diff --git a/mujoco_playground/_src/manipulation/franka_emika_panda/push.py b/mujoco_playground/_src/manipulation/franka_emika_panda/push.py
+index 957a09a..9ea7ce7 100644
+--- a/mujoco_playground/_src/manipulation/franka_emika_panda/push.py
++++ b/mujoco_playground/_src/manipulation/franka_emika_panda/push.py
+@@ -27,6 +27,7 @@ from mujoco_playground._src.manipulation.franka_emika_panda.actuator import actu
+ import numpy as np
+ 
+ from mujoco_playground._src import collision
++from mujoco_playground._src import modern_backend
+ from mujoco_playground._src import mjx_env
+ from mujoco_playground._src.manipulation.franka_emika_panda import panda
+ from mujoco_playground._src.manipulation.franka_emika_panda import panda_kinematics
+@@ -49,6 +50,7 @@ def default_vision_config() -> config_dict.ConfigDict:
+ 
+ def default_config():
+   config = config_dict.create(
++      impl="jax",
+       ctrl_dt=0.04,
+       sim_dt=0.004,
+       episode_length=200,
+@@ -235,7 +237,7 @@ class PandaPushCuboid(panda.PandaBase):
+ 
+     mj_model = self.modify_model(
+         mujoco.MjModel.from_xml_string(
+-            xml_path.read_text(), assets=panda.get_assets(actuator=config.actuator, task="push")
++            modern_backend.add_contact_sensors(xml_path.read_text()), assets=panda.get_assets(actuator=config.actuator, task="push")
+         )
+     )
+ 
+@@ -260,9 +262,11 @@ class PandaPushCuboid(panda.PandaBase):
+       print(f"Error loading overlay image: {e}")
+ 
+     mj_model.opt.timestep = config.sim_dt
++    if config.impl == 'warp':
++      mj_model.opt.ls_iterations = 32
+ 
+     self._mj_model = mj_model
+-    self._mjx_model = mjx.put_model(mj_model)
++    self._mjx_model = mjx.put_model(mj_model, impl=config.impl)
+ 
+     # Set gripper in sight of camera
+     self._post_init(obj_name='box', keyframe='low_home')
+@@ -270,30 +274,12 @@ class PandaPushCuboid(panda.PandaBase):
+     self._max_torque = 8.0 # for torque control
+     self._gear = GEAR
+ 
++    self._contact_sensors = modern_backend.contact_sensor_addresses(mj_model)
+     if self._vision:
+-      try:
+-        # pylint: disable=import-outside-toplevel
+-        from madrona_mjx.renderer import BatchRenderer  # pytype: disable=import-error
+-      except ImportError:
+-        warnings.warn(
+-            'Madrona MJX not installed. Cannot use vision with'
+-            ' PandaPushCuboid.'
+-        )
+-        return
+-      self.renderer = BatchRenderer(
+-          m=self._mjx_model,
+-          gpu_id=self._config.vision_config.gpu_id,
+-          num_worlds=self._config.vision_config.render_batch_size,
+-          batch_render_view_width=self._config.vision_config.render_width,
+-          batch_render_view_height=self._config.vision_config.render_height,
+-          enabled_geom_groups=np.asarray(
+-              self._config.vision_config.enabled_geom_groups
+-          ),
+-          enabled_cameras=None,  # Use all cameras.
+-          add_cam_debug_geo=False,
+-          use_rasterizer=self._config.vision_config.use_rasterizer,
+-          viz_gpu_hdls=None,
+-      )
++      self.renderer = modern_backend.WarpRenderer(mj_model, config)
++
++  def _colliding(self, data, geom1, geom2):
++    return data.sensordata[self._contact_sensors[tuple(sorted((geom1, geom2)))]] < 0
+ 
+   def _post_init(self, obj_name, keyframe):
+     super()._post_init(obj_name, keyframe)
+@@ -423,6 +409,8 @@ class PandaPushCuboid(panda.PandaBase):
+         init_q,
+         jp.zeros(self._mjx_model.nv, dtype=float),
+         ctrl=init_ctrl0,
++        native_model=self._mj_model,
++        nworld=self._config.vision_config.render_batch_size,
+     )
+     
+ 
+@@ -463,7 +451,7 @@ class PandaPushCuboid(panda.PandaBase):
+     reward, done = jp.zeros(2)
+ 
+     obs = self._get_obs(data, info)
+-    obs = jp.concat([obs, jp.zeros(1), jp.zeros(3)], axis=0)
++    obs = jp.concat([obs, jp.zeros(1), jp.zeros(self.action_size)], axis=0)
+ 
+     
+ 
+@@ -477,8 +465,7 @@ class PandaPushCuboid(panda.PandaBase):
+       )
+       info.update({'brightness': brightness})
+       info.update({'rng_img': rng_img}) 
+-      render_token, rgb, _ = self.renderer.init(data, self._mjx_model)
+-      info.update({'render_token': render_token})
++      rgb, data = self.renderer.render(self._mjx_model, data)
+ 
+       obs = jp.asarray(rgb[0][..., :3], dtype=jp.float32) / 255.0
+       obs = adjust_brightness(obs, brightness)
+@@ -491,7 +478,7 @@ class PandaPushCuboid(panda.PandaBase):
+ 
+       if self._proprioception:
+ 
+-        ee_height = data.xpos[self._left_finger_geom][2] + jax.random.normal(rng, ()) * 0.01
++        ee_height = data.geom_xpos[self._left_finger_geom][2] + jax.random.normal(rng, ()) * 0.01
+         joint_p = data.qpos[:7] + jax.random.normal(rng, 7) * 0.1
+         normalized_jp = 2 * (joint_p - jp.array(self._jnt_range())[:, 0]) / (
+           jp.array(self._jnt_range())[:, 1] - jp.array(self._jnt_range())[:, 0]
+@@ -617,13 +604,13 @@ class PandaPushCuboid(panda.PandaBase):
+     dx = strip_half[0] - jp.abs(box_xy[0] - strip_pos[0])
+     dy = strip_half[1] - jp.abs(box_xy[1] - strip_pos[1])
+     # margin = jp.minimum(dx, dy)  # how far from closest edge (in meters)
+-    # box_on_ground = collision.geoms_colliding(data, self._floor_geom, self._box_geom)
++    # box_on_ground = self._colliding(data, self._floor_geom, self._box_geom)
+     box_on_ground = box_pos[2] < 0.025
+     in_bounds = (dx >= 0) & (dy >= 0) & box_on_ground
+ 
+     delta = jp.linalg.norm(box_xy - prev_xy)
+     hand_floor_collision = [
+-        collision.geoms_colliding(data, self._floor_geom, g)
++        self._colliding(data, self._floor_geom, g)
+         for g in [
+             self._left_finger_geom,
+             self._right_finger_geom,
+@@ -689,7 +676,7 @@ class PandaPushCuboid(panda.PandaBase):
+     obs = jp.concat([obs, no_soln.reshape(1), action], axis=0)
+   
+     if self._vision:
+-      _, rgb, _ = self.renderer.render(state.info['render_token'], data)
++      rgb, data = self.renderer.render(self._mjx_model, data)
+       obs = jp.asarray(rgb[0][..., :3], dtype=jp.float32) / 255.0
+       obs = adjust_brightness(obs, state.info['brightness'])
+       # augment image
+@@ -708,7 +695,7 @@ class PandaPushCuboid(panda.PandaBase):
+       if self._proprioception:
+         state.info['rng'], rng_prop = jax.random.split(state.info['rng'])
+ 
+-        ee_height = data.xpos[self._left_finger_geom][2] + jax.random.normal(rng_prop, ()) * 0.01
++        ee_height = data.geom_xpos[self._left_finger_geom][2] + jax.random.normal(rng_prop, ()) * 0.01
+         joint_p = data.qpos[:7] + jax.random.normal(rng_prop, 7) * 0.1
+         joint_v = data.qvel[:7] + jax.random.normal(rng_prop, 7) * 0.1
+         normalized_jv = 2 * (joint_v - jp.array(self._jnt_vel_range())[:, 0]) / (
+@@ -971,7 +958,7 @@ if __name__ == '__main__':
+ 
+   # # Load the model with assets
+   # mj_model = mujoco.MjModel.from_xml_string(
+-  #     xml_path.read_text(), assets=panda.get_assets(actuator="position", task="push")
++  #     modern_backend.add_contact_sensors(xml_path.read_text()), assets=panda.get_assets(actuator="position", task="push")
+   # )
+ 
+   # mj_data = mujoco.MjData(mj_model)
+diff --git a/mujoco_playground/_src/mjx_env.py b/mujoco_playground/_src/mjx_env.py
+index 79c4db0..557e6bf 100644
+--- a/mujoco_playground/_src/mjx_env.py
++++ b/mujoco_playground/_src/mjx_env.py
+@@ -133,9 +133,14 @@ def init(
+     act: Optional[jax.Array] = None,
+     mocap_pos: Optional[jax.Array] = None,
+     mocap_quat: Optional[jax.Array] = None,
++    native_model: Optional[mujoco.MjModel] = None,
++    nworld: int = 1,
+ ) -> mjx.Data:
+   """Initialize MJX Data."""
+-  data = mjx.make_data(model)
++  data = mjx.make_data(
++      native_model if native_model is not None else model,
++      impl=model.impl, naconmax=128 * nworld, naccdmax=128 * nworld,
++      njmax=512)
+   if qpos is not None:
+     data = data.replace(qpos=qpos)
+   if qvel is not None:
+diff --git a/mujoco_playground/_src/wrapper.py b/mujoco_playground/_src/wrapper.py
+index 37de6ba..a9d8e6e 100644
+--- a/mujoco_playground/_src/wrapper.py
++++ b/mujoco_playground/_src/wrapper.py
+@@ -145,7 +145,11 @@ class BraxAutoResetWrapper(Wrapper):
+         done = jp.reshape(done, [x.shape[0]] + [1] * (len(x.shape) - 1))
+       return jp.where(done, x, y)
+ 
+-    data = jax.tree.map(where_done, state.info['first_state'], state.data)
++    if state.done.shape:
++      data = jax.vmap(lambda d, done, first: d.where(done, first))(
++          state.data, state.done, state.info['first_state'])
++    else:
++      data = state.data.where(state.done, state.info['first_state'])
+     obs = jax.tree.map(where_done, state.info['first_obs'], state.obs)
+     return state.replace(data=data, obs=obs)
+ 
+@@ -168,16 +172,22 @@ class BraxDomainRandomizationVmapWrapper(Wrapper):
+ 
+   def reset(self, rng: jax.Array) -> mjx_env.State:
+     def reset(mjx_model, rng):
+-      env = self._env_fn(mjx_model=mjx_model)
+-      return env.reset(rng)
++      original = self.env.unwrapped._mjx_model
++      try:
++        return self._env_fn(mjx_model).reset(rng)
++      finally:
++        self.env.unwrapped._mjx_model = original
+ 
+     state = jax.vmap(reset, in_axes=[self._in_axes, 0])(self._mjx_model_v, rng)
+     return state
+ 
+   def step(self, state: mjx_env.State, action: jax.Array) -> mjx_env.State:
+     def step(mjx_model, s, a):
+-      env = self._env_fn(mjx_model=mjx_model)
+-      return env.step(s, a)
++      original = self.env.unwrapped._mjx_model
++      try:
++        return self._env_fn(mjx_model).step(s, a)
++      finally:
++        self.env.unwrapped._mjx_model = original
+ 
+     res = jax.vmap(step, in_axes=[self._in_axes, 0, 0])(
+         self._mjx_model_v, state, action
+diff --git a/mujoco_playground/_src/modern_backend.py b/mujoco_playground/_src/modern_backend.py
+new file mode 100644
+index 0000000..45cae10
+--- /dev/null
++++ b/mujoco_playground/_src/modern_backend.py
+@@ -0,0 +1,44 @@
++"""MJX-Warp rendering and fixed-size contact queries for the cuboid tasks."""
++import jax
++import jax.numpy as jp
++from mujoco import mjx
++
++_PAIRS = [(a, b) for a in ('box', 'floor')
++          for b in ('left_finger_pad', 'right_finger_pad', 'hand_capsule')]
++
++
++def add_contact_sensors(xml):
++    # mindist preserves the original minimum-contact-distance < 0 predicate.
++    sensors = ''.join(
++        f'<contact name="research_contact_{i}" geom1="{a}" geom2="{b}" '
++        'data="dist" reduce="mindist" num="1"/>'
++        for i, (a, b) in enumerate(_PAIRS))
++    return xml.replace('</mujoco>', '<sensor>' + sensors + '</sensor></mujoco>')
++
++
++def contact_sensor_addresses(model):
++    return {tuple(sorted((model.geom(a).id, model.geom(b).id))):
++            int(model.sensor(f'research_contact_{i}').adr[0])
++            for i, (a, b) in enumerate(_PAIRS)}
++
++
++class WarpRenderer:
++    def __init__(self, model, config):
++        if config.impl != 'warp' or jax.default_backend() != 'gpu':
++            raise RuntimeError('Vision requires --impl=warp and a CUDA JAX device.')
++        vc = config.vision_config
++        self.width, self.height = vc.render_width, vc.render_height
++        self.ncam = model.ncam
++        self.context = mjx.create_render_context(
++            model, nworld=vc.render_batch_size,
++            cam_res=(self.width, self.height), render_rgb=True,
++            render_depth=False, use_shadows=True,
++            enabled_geom_groups=list(vc.enabled_geom_groups))
++
++    def render(self, model, data):
++        # Called inside the environment vmap. MJX's batching rule handles worlds.
++        data = mjx.refit_bvh(model, data, self.context.pytree())
++        rgb, _, data = mjx.render(model, data, self.context.pytree())
++        # Native renderer packs ARGB into uint32 pixels (R at bit 16).
++        rgb = jp.stack([(rgb >> shift) & 255 for shift in (16, 8, 0)], axis=-1)
++        return rgb.astype(jp.uint8).reshape(self.ncam, self.height, self.width, 3), data

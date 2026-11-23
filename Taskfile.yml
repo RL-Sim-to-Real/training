@@ -1,0 +1,201 @@
+# Task v3; commands within each workflow run sequentially.
+version: '3'
+vars:
+  PYTHON: '{{.PYTHON | default ".venv/bin/python"}}'
+  MODE: cpu
+  DEVICE_ID: '{{.DEVICE_ID | default "0"}}'
+  SEEDS: 0 1 2 3 4 5 6 7 8 9
+  COOLDOWN: '5'
+  ALL_PAIRS:
+  - &id001
+    actuator: position
+    action: cartesian_increment
+    scale: '.05'
+  - &id002
+    actuator: velocity
+    action: cartesian_increment
+    scale: '.05'
+  - &id004
+    actuator: position
+    action: joint_increment
+    scale: '.05'
+  - &id003
+    actuator: velocity
+    action: joint
+    scale: '1'
+  LOGDIR: logs
+  PLOT_OUT: visualize/figs_pub/img
+  GROUPS: Cartesian Increment=**/PandaPickCubeCartesianModified-cartesian_increment-position-seed*;Velocity=**/PandaPickCubeCartesianModified-joint-velocity-seed*;Position
+    Increment=**/PandaPickCubeCartesianModified-joint_increment-position-seed*;Torque=**/PandaPickCubeCartesianModified-joint-torque-seed*
+  PLOTS:
+  - title: Episodic Return
+    axis: Return
+    tag: episode/sum_reward
+  - title: Success Rate
+    axis: Success
+    tag: episode/success
+  - title: Episodic Cube Collision
+    axis: Collision
+    tag: episode/cube_collision
+  - title: Episodic Floor Collision
+    axis: Collision
+    tag: episode/floor_collision
+  - title: Episodic Jerk
+    axis: Jerk
+    tag: episode/jerk
+  CARTESIAN_PAIRS:
+  - *id001
+  - *id002
+  JOINT_PAIRS:
+  - *id003
+  - *id004
+env:
+  CUDA_DEVICE_ORDER: PCI_BUS_ID
+  CUDA_VISIBLE_DEVICES: '{{.DEVICE_ID}}'
+  XLA_PYTHON_CLIENT_PREALLOCATE: 'false'
+  MUJOCO_GL: egl
+  WARP_CACHE_PATH: '{{.ROOT_DIR}}/.cache/warp'
+tasks:
+  default:
+    desc: List available commands
+    cmds:
+    - task --list
+  setup:
+    desc: Install the pinned environment (MODE=cpu or cuda)
+    requires:
+      vars:
+      - name: MODE
+        enum:
+        - cpu
+        - cuda
+    cmds:
+    - 'git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init dependencies/mujoco_playground'
+    - task: patch:apply
+    - uv sync --locked {{if eq .MODE "cuda"}}--extra cuda{{end}}
+    - '.venv/bin/python -c ''import mujoco_playground; import jax; print(jax.devices())'' '
+  patch:apply:
+    desc: Apply the Playground patch idempotently
+    cmds:
+    - "if git -C dependencies/mujoco_playground apply --reverse --check \"{{.ROOT_DIR}}/patches/playground-modern.patch\"\
+      \ 2>/dev/null; then\n  echo 'Playground modernization patch already applied.'\nelse\n  git -C dependencies/mujoco_playground\
+      \ apply --check \"{{.ROOT_DIR}}/patches/playground-modern.patch\"\n  git -C dependencies/mujoco_playground apply \"\
+      {{.ROOT_DIR}}/patches/playground-modern.patch\"\nfi"
+  patch:export:
+    desc: Refresh the distributable Playground patch
+    cmds:
+    - '{{.PYTHON | shellQuote}} scripts/export_playground_patch.py'
+  debug:
+    desc: Small training/inference run; forward options after --
+    cmds:
+    - '{{.PYTHON | shellQuote}} debug_train.py {{.CLI_ARGS}}'
+  validate:
+    desc: Regression tests and all eight PPO smoke cases (MODE=cpu or cuda)
+    requires:
+      vars:
+      - name: MODE
+        enum:
+        - cpu
+        - cuda
+    env:
+      JAX_PLATFORMS: '{{if eq .MODE "cpu"}}cpu{{else}}cuda{{end}}'
+    cmds:
+    - '{{.PYTHON | shellQuote}} -m pytest -q -m ''{{if eq .MODE "cpu"}}not gpu{{else}}not integration or gpu{{end}}'' '
+    - for:
+      - pick
+      - push
+      task: _validate:task
+      vars:
+        CUBOID: '{{.ITEM}}'
+  _validate:task:
+    internal: true
+    cmds:
+    - for:
+        var: ALL_PAIRS
+      cmd: '{{.PYTHON | shellQuote}} train_{{.CUBOID}}_cube_ppo.py --smoke --device_id={{.DEVICE_ID | shellQuote}} {{if eq
+        .MODE "cpu"}}--impl=jax --no-vision{{else}}--impl=warp --vision --proprioception{{end}} --actuator={{.ITEM.actuator}}
+        --action={{.ITEM.action}} --action_scale={{.ITEM.scale}} --domain_randomization'
+    env:
+      JAX_PLATFORMS: '{{if eq .MODE "cpu"}}cpu{{else}}cuda{{end}}'
+  _benchmark:
+    internal: true
+    cmds:
+    - for:
+        var: SEEDS
+      task: _benchmark:seed
+      vars:
+        SEED: '{{.ITEM}}'
+        CUBOID: '{{.CUBOID}}'
+        GPU: '{{.GPU}}'
+        TIMESTEPS: '{{.TIMESTEPS}}'
+        PAIR_SET: '{{.PAIR_SET}}'
+  _benchmark:seed:
+    internal: true
+    cmds:
+    - for:
+        var: PAIRS
+      cmd: '{{.PYTHON | shellQuote}} train_{{.CUBOID}}_cube_ppo.py --num_timesteps={{.TIMESTEPS | shellQuote}} --seed={{.SEED
+        | shellQuote}} --actuator={{.ITEM.actuator}} --action={{.ITEM.action}} --action_scale={{.ITEM.scale}} --use_tb --vision
+        --impl=warp --domain_randomization --proprioception --log_training_metrics --device_id={{.GPU | shellQuote}} {{.CLI_ARGS}}'
+    - sleep {{.COOLDOWN | shellQuote}}
+    vars:
+      PAIRS:
+        ref: index . .PAIR_SET
+  benchmark:simulation:
+    desc: Measure synchronized simulator throughput; options after --
+    cmds:
+    - '{{.PYTHON | shellQuote}} benchmark_simulation.py --device_id={{.DEVICE_ID | shellQuote}} {{.CLI_ARGS}}'
+  policy:render:
+    desc: Restore and render a policy; pass --run_dir after --
+    cmds:
+    - '{{.PYTHON | shellQuote}} load_and_render_policy.py --device_id={{.DEVICE_ID | shellQuote}} {{.CLI_ARGS}}'
+  plot:
+    desc: Plot the five historical TensorBoard metrics (override LOGDIR/GROUPS)
+    cmds:
+    - for:
+        var: PLOTS
+      cmd: '{{.PYTHON | shellQuote}} visualize/tb_plot_individual.py --logdir={{.LOGDIR | shellQuote}} --title={{.ITEM.title
+        | shellQuote}} --yaxis={{.ITEM.axis | shellQuote}} --out={{.PLOT_OUT | shellQuote}} --tags={{.ITEM.tag | shellQuote}}
+        --groups={{.GROUPS | shellQuote}} --bin_count=200 {{.CLI_ARGS}}'
+  archive:benchmark-prop-torque:
+    desc: Archived torque experiment (unsupported by modern CLI)
+    preconditions:
+    - sh: 'false'
+      msg: The archived torque benchmark requires the historical stack; the modern CLI supports position and velocity actuators.
+        Its original settings are retained in _archive/torque-benchmark.md.
+    cmds: []
+  benchmark:pick-1:
+    desc: Original pick-1 ten-seed benchmark (default GPU 0)
+    cmds:
+    - task: _benchmark
+      vars:
+        CUBOID: pick
+        GPU: '{{.BENCHMARK_DEVICE | default "0"}}'
+        TIMESTEPS: '{{.NUM_TIMESTEPS | default "15000000"}}'
+        PAIR_SET: CARTESIAN_PAIRS
+  benchmark:pick-2:
+    desc: Original pick-2 ten-seed benchmark (default GPU 1)
+    cmds:
+    - task: _benchmark
+      vars:
+        CUBOID: pick
+        GPU: '{{.BENCHMARK_DEVICE | default "1"}}'
+        TIMESTEPS: '{{.NUM_TIMESTEPS | default "15000000"}}'
+        PAIR_SET: JOINT_PAIRS
+  benchmark:push-1:
+    desc: Original push-1 ten-seed benchmark (default GPU 0)
+    cmds:
+    - task: _benchmark
+      vars:
+        CUBOID: push
+        GPU: '{{.BENCHMARK_DEVICE | default "0"}}'
+        TIMESTEPS: '{{.NUM_TIMESTEPS | default "20000000"}}'
+        PAIR_SET: JOINT_PAIRS
+  benchmark:push-2:
+    desc: Original push-2 ten-seed benchmark (default GPU 1)
+    cmds:
+    - task: _benchmark
+      vars:
+        CUBOID: push
+        GPU: '{{.BENCHMARK_DEVICE | default "1"}}'
+        TIMESTEPS: '{{.NUM_TIMESTEPS | default "20000000"}}'
+        PAIR_SET: CARTESIAN_PAIRS

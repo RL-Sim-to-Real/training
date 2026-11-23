@@ -1,0 +1,38 @@
+[project]
+name = "sim-to-real-training"
+version = "0.1.0"
+description = "Brax PPO cuboid benchmarks with MuJoCo Playground and MJX-Warp"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "jax==0.8.2",
+    "jaxlib==0.8.2",
+    "brax==0.14.2",
+    "flax==0.12.2",
+    "orbax-checkpoint==0.11.30",
+    "mujoco==3.17.0",
+    "mujoco-mjx[warp]==3.17.0",
+    "opencv-python-headless==5.1.0.95",
+    "tensorboardX==2.6.5",
+    "wandb==0.31.0",
+    "mediapy==1.2.7",
+    "imageio-ffmpeg==0.6.0",
+    "playground",
+]
+
+[project.optional-dependencies]
+cuda = ["jax[cuda12]==0.8.2"]
+
+[dependency-groups]
+dev = ["pytest==9.2.0"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+playground = { path = "dependencies/mujoco_playground", editable = true }
+
+# Prefer public packages over unrelated indexes in user-level uv configuration.
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
